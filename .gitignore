@@ -1,9 +1,39 @@
+# Build output
 target/
-.idea/
-*.iml
-.env
-*.log
-.DS_Store
-node_modules/
 dist/
 .angular/
+
+# Dependencies
+node_modules/
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and heap dumps
+*.log
+*.hprof
+
+# Environment files: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Keys and keystores
+*.pem
+*.key
+*.p12
+*.jks
+
+# Cluster credentials
+kubeconfig
+*.kubeconfig
+
+# Terraform state and variables: .terraform.lock.hcl is committed
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
