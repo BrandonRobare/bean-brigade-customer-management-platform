@@ -1,11 +1,3 @@
----
-status: proposed
-date: 2026-10-01
-decision-makers: Brandon
-consulted: Bryan, Carter
-informed: Chad
----
-
 # ADR 0006: Use self-issued JWTs for sign-in and roles
 
 **In short:** In the context of sign-in and the AGENT / ADMIN roles, facing a brief that requires JWT and a course that
@@ -42,11 +34,16 @@ course gives us no identity provider. Who issues our tokens, and how does the AP
 Chosen option: "Self-issued JWT", because it's the only option with real signed, expiring tokens and roles that adds
 nothing to deploy and nothing to reach over the internet during the demo.
 
-- `POST /api/v1/auth/token` signs an HS256 JWT (`sub`, `roles`, `exp` 30 minutes out) for two in-memory demo users:
-  `agent1` (AGENT) and `admin1` (ADMIN).
-- Spring Security's OAuth2 resource server checks the token on every other `/api/**` call, and anything not explicitly
-  allowed is denied.
-- The signing key (`JWT_SECRET`) and the demo passwords come from the environment, never from Git.
+- `POST /api/v1/auth/token` signs an RS256 JWT (`sub`, `roles`, `exp` 30 minutes out) with a private RSA key, for two
+  in-memory demo users: `agent1` (AGENT) and `admin1` (ADMIN).
+- Spring Security's OAuth2 resource server checks the token on every other `/api/**` call using only the public key,
+  and anything not explicitly allowed is denied.
+- The private key (`JWT_PRIVATE_KEY`) and the demo passwords come from the environment, never from Git. The public key
+  (`JWT_PUBLIC_KEY`) isn't a secret.
+
+We chose RS256 over HS256, the single shared secret Lab 28 used. With RS256, checking a token needs only the public
+key, and it's what Spring and identity providers like Keycloak and Auth0 use by default. Spring Security's own JWT login
+sample takes the same approach.
 - Angular keeps the token in memory only. Its guard hides screens; the API decides.
 - `lab-demo-token` keeps working under the `dev` profile until the login page lands (Tue 10/6), then it's removed.
 
@@ -57,12 +54,16 @@ The endpoint shapes go in `docs/contract.md`, and the access rules and wiring go
 
 - Good, because nothing extra runs in the demo: no identity provider container, no outside account, no internet
   dependency.
-- Good, because the API uses Spring's standard resource server to check tokens. Moving to Keycloak or Auth0 later
-  means a config change (`issuer-uri`) and deleting the token endpoint, while the rules and tests stay the same.
+- Good, because the API uses Spring's standard resource server to check tokens, with the same algorithm an identity
+  provider uses. Moving to Keycloak or Auth0 later means a config change (`issuer-uri`) and deleting the token
+  endpoint, while the rules and tests stay the same.
+- Good, because only the token endpoint touches the private key. Checking a token can't create one, and a captured
+  token can't be used to guess the key the way a weak HS256 secret can.
 - Good, because tokens expire: a leaked one works for 30 minutes at most.
-- Bad, because we hold the signing key. If `JWT_SECRET` leaks, anyone can mint an ADMIN token until we rotate it, and
-  rotating it signs everyone out. It goes in the risk register.
-- Bad, because with HS256, anything that can check a token can also create one. That's fine while there's one service.
+- Bad, because we hold the private key. If `JWT_PRIVATE_KEY` leaks, anyone can mint an ADMIN token until we replace the
+  key pair, and replacing it signs everyone out. It goes in the risk register.
+- Bad, because a key pair is more setup than one secret string: generate it, mount it as an OpenShift Secret, and
+  have tests generate their own.
 - Bad, because there's no refresh, revocation, lockout or login rate limit. These are non-claims: a token stays valid
   until it expires, even after logout.
 - Neutral, because the contract gains one endpoint, which Bryan approves.
@@ -77,10 +78,6 @@ The endpoint shapes go in `docs/contract.md`, and the access rules and wiring go
 
 ## More Information
 
-- Revisit if: a second service needs to check tokens (switch to RS256), or real users or SSO are needed (switch to
-  Keycloak and keep the resource-server rules).
+- Revisit if: a second service needs to check tokens (publish the public key as a JWKS endpoint), or real users or SSO
+  are needed (switch to Keycloak and keep the resource-server rules).
 - Confidence: high for the demo, low as a production design.
-- Links: [#13 this ADR](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/13) ·
-  [#38 security filter chain](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/38) ·
-  [#24 CAP-15 sign in with a role](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/24)
-  · [contract](../contract.md) · [architecture](../architecture.md)
