@@ -34,18 +34,20 @@ course gives us no identity provider. Who issues our tokens, and how does the AP
 Chosen option: "Self-issued JWT", because it's the only option with real signed, expiring tokens and roles that adds
 nothing to deploy and nothing to reach over the internet during the demo.
 
-- `POST /api/v1/auth/token` signs an RS256 JWT (`sub`, `roles`, `exp` 30 minutes out) with a private RSA key, for two
+- `POST /api/v1/auth/login` signs an RS256 JWT (`sub`, `roles`, `exp` 30 minutes out) with a private RSA key, for two
   in-memory demo users: `agent1` (AGENT) and `admin1` (ADMIN).
 - Spring Security's OAuth2 resource server checks the token on every other `/api/**` call using only the public key,
   and anything not explicitly allowed is denied.
+- The ADMIN-only endpoints also carry `@PreAuthorize("hasRole('ADMIN')")`, so the role check sits on the endpoint
+  itself as well as in the URL rules, as Module 49 teaches.
 - The private key (`JWT_PRIVATE_KEY`) and the demo passwords come from the environment, never from Git. The public key
   (`JWT_PUBLIC_KEY`) isn't a secret.
+- Angular keeps the token in memory only. Its guard hides screens; the API decides.
+- `lab-demo-token` keeps working under the `dev` profile until the login page lands (Tue 10/6), then it's removed.
 
 We chose RS256 over HS256, the single shared secret Lab 28 used. With RS256, checking a token needs only the public
 key, and it's what Spring and identity providers like Keycloak and Auth0 use by default. Spring Security's own JWT login
 sample takes the same approach.
-- Angular keeps the token in memory only. Its guard hides screens; the API decides.
-- `lab-demo-token` keeps working under the `dev` profile until the login page lands (Tue 10/6), then it's removed.
 
 The endpoint shapes go in `docs/contract.md`, and the access rules and wiring go in the security section of
 `docs/architecture.md`.
