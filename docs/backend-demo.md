@@ -18,7 +18,7 @@
 
 ```powershell
 cd backend
-mvn -B test
+mvn -B test 
 ```
 
 ## Full path (homework)
