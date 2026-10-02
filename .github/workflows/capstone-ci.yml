@@ -1,7 +1,6 @@
 # .github/workflows/capstone-ci.yml
 name: Capstone CI
 
-# every PR and every merge to main gets built and tested. frontend and backend are required checks, so a red one blocks the merge.
 on:
   pull_request:
   push:
@@ -18,7 +17,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # job ids frontend and backend are the required check names in protect-main, don't rename them.
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -26,15 +24,12 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      # node 22 per the capstone brief (lab 51 starter says 20)
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # exact versions from package-lock.json
       - run: npm ci
-      # fails the check if the angular app doesn't compile. add ng test once there are specs.
       - run: npx ng build --configuration=production
 
   backend:
@@ -42,7 +37,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    # throwaway postgres for the tests. same db/user/password as compose.yaml and InteractionApiIT, so these aren't secrets.
     services:
       postgres:
         image: postgres:16
@@ -51,7 +45,6 @@ jobs:
           POSTGRES_PASSWORD: change-me
           POSTGRES_DB: crm
         ports: ["5432:5432"]
-        # wait until postgres accepts connections, or maven can start first and fail at random
         options: >-
           --health-cmd "pg_isready -U crm -d crm"
           --health-interval 5s --health-timeout 5s --health-retries 10
@@ -66,8 +59,21 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      # compile + run every test against the postgres above. never -DskipTests. -ntp hides download noise.
       - name: Verify
         run: mvn -B -ntp clean verify
-
-  # TODO(#49): package-once on main only: JAR + SHA256SUMS, image, digest. v* tags reuse it in CD, never rebuild.
+      # #49: package once on main, JAR + checksum from this verify. image step still to do.
+      - name: Checksum JAR
+        if: github.ref == 'refs/heads/main'
+        working-directory: backend/target
+        run: |
+          sha256sum *.jar > SHA256SUMS
+          echo "commit=${GITHUB_SHA}" >> SHA256SUMS
+          echo "run=${GITHUB_RUN_NUMBER}" >> SHA256SUMS
+      # #49: upload JAR + SHA256SUMS as the run artifact
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: crm-api-jar
+          path: |
+            backend/target/*.jar
+            backend/target/SHA256SUMS
