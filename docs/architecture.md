@@ -91,7 +91,7 @@ How `crm-ui` is served in the cluster is **open**: its own nginx image, or stati
 | API → PostgreSQL | The app connects as a least-privilege `crm_app` login with data access only (planned in `V2`); Flyway migrates as the schema owner. Credentials come from environment variables or an OpenShift Secret, never from Git.                                                                   |
 | API → Kafka      | Internal network only. Events carry IDs, types and the correlation ID, never the interaction's free-text summary.                                                                                                                                                                         |
 | GitHub → cluster | Only the pipeline deploys. Deploy credentials are GitHub Environment secrets; the production environment accepts only `v*` tags.                                                                                                                                                          |
-| Actuator         | Liveness and readiness are open for the OpenShift probes; no other Actuator endpoint is exposed through the Route.                                                                                                                                                                        |
+| Actuator         | Liveness and readiness are open for the OpenShift probes; `metrics` is ADMIN only; nothing else (`env`, `heapdump`, `info`) is exposed (#54).                                                                                                                                             |
 
 ## Runtime Path
 
@@ -163,6 +163,7 @@ sequenceDiagram
 | `GET` / `POST /api/v1/interactions`                                | yes      | yes    |
 | `POST /api/v1/customers`, `PUT /api/v1/customers/{publicId}`       | no (403) | yes    |
 | `/actuator/health/liveness`, `/actuator/health/readiness`          | public   | public |
+| `/actuator/metrics`                                                | no (403) | yes    |
 
 Tokens are self-issued (**decided**, ADR 0006). `POST /api/v1/auth/login` checks one of two in-memory demo users and
 returns a JWT signed with the API's private RSA key (RS256). Spring Security's resource server checks every other
@@ -226,7 +227,7 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    pr["PR to main"] --> ci["CI<br/>frontend: npm ci, tests, ng build<br/>backend: mvn verify on PostgreSQL<br/>scan: Dependency-Check, npm audit"]
+    pr["PR to main"] --> ci["CI<br/>frontend: npm ci, tests, ng build<br/>backend: mvn verify on PostgreSQL<br/>scan: Dependency-Check, npm audit, CodeQL"]
     ci --> merge["review + squash merge"]
     merge --> img["build image once<br/>record sha256 digest"]
     img --> reg["registry (open)"]

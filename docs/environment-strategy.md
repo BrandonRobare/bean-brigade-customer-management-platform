@@ -79,7 +79,7 @@ change anything.
 
 - **Pods run as a random UID** under the restricted security context, so images can't need root, and manifests don't set
   `runAsUser`.
-- **Probes** use Actuator liveness and readiness. The Route doesn't expose any other Actuator endpoint.
+- **Probes** use Actuator liveness and readiness. The only other Actuator endpoint is `metrics`, ADMIN only (#54).
 - **Names:** `crm-api`, plus `crm-ui` if the UI gets its own image. The `lab50-crm` names are renamed before anything is
   deployed.
 
