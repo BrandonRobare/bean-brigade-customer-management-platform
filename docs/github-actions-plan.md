@@ -73,6 +73,11 @@ Module 51 lists five scan types, and the Module 40 deck adds IaC. What we run fo
 - **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data weekly either way.
   Dependabot and fork PRs don't get the secret, so they update at the keyless rate limit. Pinned to 12.2.2: 13.0.0
   fails without a key (upstream #8715).
+- **First Dependency-Check triage (2026-10-05):** Boot 3.3.5 scanned at 25 Critical / 46 High. Boot 3.5.16 with
+  `tomcat.version` 10.1.60 and `postgresql.version` 42.7.13 fixed the reachable ones; the 13 left in Spring Framework
+  6.2.19 and Log4j are false positives (module not on the classpath) or unused features accepted until 2026-12-31
+  (`dc-001` to `dc-007`). Suppressions match the product's jars at that exact version, so an upgrade brings them back
+  for review. The backend gate passes, so it can go blocking once CI confirms it.
 
 ## Artifact Identity
 
