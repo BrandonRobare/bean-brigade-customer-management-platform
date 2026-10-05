@@ -15,6 +15,7 @@
   <name>lab50-crm-backend</name>
   <properties>
     <java.version>21</java.version>
+    <dependency-check.version>12.2.2</dependency-check.version>
   </properties>
   <dependencies>
     <dependency>
@@ -66,4 +67,34 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>security-scan</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>${dependency-check.version}</version>
+            <configuration>
+              <formats>
+                <format>HTML</format>
+                <format>JSON</format>
+              </formats>
+              <failBuildOnCVSS>7</failBuildOnCVSS>
+              <suppressionFile>${project.basedir}/dependency-check-suppressions.xml</suppressionFile>
+              <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

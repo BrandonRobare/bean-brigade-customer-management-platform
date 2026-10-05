@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every suppression needs a matching row in docs/security-findings.csv and:
+  - one <cve>, scoped by <packageUrl> to the affected product's jars at the triaged version, never a wildcard
+    (every Spring jar shares one CPE, so a CVE suppressed on spring-core alone reappears on spring-tx)
+  - <notes> with the finding_id, the reason and the owner
+  - until="YYYY-MM-DDZ"; once it expires the finding fails the build again
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

@@ -77,3 +77,57 @@ jobs:
           path: |
             backend/target/*.jar
             backend/target/SHA256SUMS
+
+  scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # #55: NVD data lives outside ~/.m2 so the maven cache doesn't swallow it. weekly key, newest older week as fallback
+      - name: NVD cache week
+        id: nvd-week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check-data
+          key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
+          restore-keys: dependency-check-${{ runner.os }}-
+      # #55: report-only
+      - name: Dependency-Check
+        continue-on-error: true
+        env:
+          NVD_SECRET: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "$NVD_SECRET" ]; then export NVD_API_KEY="$NVD_SECRET"; fi
+          mvn -B -ntp -Psecurity-scan dependency-check:check -DdataDirectory="$HOME/.dependency-check-data"
+      - name: Findings summary
+        if: always()
+        run: |
+          report=target/dependency-check-report.json
+          {
+            echo "### Dependency-Check"
+            if [ -f "$report" ]; then
+              echo "| Severity | Findings |"
+              echo "|---|---|"
+              jq -r '[.dependencies[].vulnerabilities[]?.severity | ascii_upcase]
+                | if length == 0 then "| none | 0 |"
+                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' "$report"
+              echo
+              echo "Triage in \`docs/security-findings.csv\`. Full report in the \`dependency-check-report\` artifact."
+            else
+              echo "No report: the scan didn't finish. Check the Dependency-Check step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
