@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CustomerRepository extends JpaRepository<CustomerEntity, Long> {
   Optional<CustomerEntity> findByPublicId(String publicId);
+
+  boolean existsByPublicId(String publicId);
 }
