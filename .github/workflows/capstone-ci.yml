@@ -10,8 +10,8 @@ on:
 permissions:
   contents: read
 
-# stop running CI for the same branch if a new commit is pushed (e.g., PR update) to save GitHub Actions minutes and avoid race conditions.
-# only cancel for PRs, not for main pushes, so every main commit gets a finished run.
+# stop running CI for the same branch if a new commit is pushed (e.g., PR update) to save GitHub Actions minutes
+# and avoid race conditions. Only cancel for PRs, not for main pushes, so every main commit gets a finished run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
