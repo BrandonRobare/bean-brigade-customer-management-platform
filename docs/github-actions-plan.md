@@ -30,16 +30,16 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 ## Jobs and Gates
 
-| Job         | Runs on                                               | What it does                                                                                                                                                                                 | Blocks merge                       | Owner                     | Evidence                                                                 |
-|-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|--------------------------------------------------------------------------|
-| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | yes                                | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                      |
-| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | yes                                | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                  |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven) and `npm audit --audit-level=high`; SAST tool to pick                                                                                                               | report-only until triage, then yes | Carter                    | `reports/dependency-check.html`; accepted findings with owner and expiry |
-| `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                  |
-| `image`     | `main`                                                | build the `crm-api` image from the verified JAR, scan it with Trivy, push once, record the digest                                                                                            | n/a                                | Brandon; Dockerfile Bryan | `artifact-manifest.json` artifact, Trivy report and job summary          |
-| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                     |
-| `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                        |
-| `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                  |
+| Job         | Runs on                                               | What it does                                                                                                                                                                                 | Blocks merge                       | Owner                     | Evidence                                                                                                         |
+|-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
+| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | yes                                | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
+| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | yes                                | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), CodeQL for Java and TypeScript (#53), gitleaks (#56), `trivy config` on `openshift/` and `infra/` (#57)      | report-only until triage, then yes | Carter                    | `reports/dependency-check.html`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
+| `image`     | `main`                                                | build the `crm-api` image from the verified JAR, scan it with Trivy, push once, record the digest                                                                                            | n/a                                | Brandon; Dockerfile Bryan | `artifact-manifest.json` artifact, Trivy report and job summary                                                  |
+| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
+| `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
+| `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
 
 **Required checks:** `frontend` and `backend`, enforced by the `protect-main` ruleset, so those job IDs must not be
 renamed. `scan` joins them once the current findings are triaged. Don't put path filters on a required job: a PR that
@@ -50,19 +50,26 @@ dismissed on push, squash merge only, no force pushes or deletion, no bypass.
 
 ## Scans
 
-Module 51 lists five scan types. What we run for each:
+Module 51 lists five scan types, and the Module 40 deck adds IaC. What we run for each:
 
-| Scan         | Tool                                         | When                             | Fails at      | Status                                                                                    |
-|--------------|----------------------------------------------|----------------------------------|---------------|-------------------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit`  | PR, `main`                       | CVSS 7 / high | proposed, Carter                                                                          |
-| SAST         | Semgrep CE or SpotBugs with FindSecBugs      | PR                               | high          | open: CodeQL needs GitHub Advanced Security on private repos                              |
-| Secrets      | gitleaks                                     | PR                               | any finding   | stretch: GitHub secret scanning isn't on our plan                                         |
-| Image        | Trivy                                        | `main`, after build, before push | critical      | required (Lab 51), Brandon; if it can't run, a risk-register row with an owner and a date |
-| DAST         | OWASP ZAP baseline against the staging Route | after a staging `promote`        | advisory      | not planned                                                                               |
+| Scan         | Tool                                                   | When                             | Fails at      | Status                                                                                    |
+|--------------|--------------------------------------------------------|----------------------------------|---------------|-------------------------------------------------------------------------------------------|
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev` | PR, `main`                       | CVSS 7 / high | planned (#55, #52), Carter                                                                |
+| SAST         | CodeQL (Java, TypeScript); Semgrep CE as fallback      | PR, `main`                       | high          | planned (#53): private repos need GitHub Code Security for code scanning                  |
+| Secrets      | gitleaks                                               | PR, `main`                       | any finding   | planned (#56), Brandon; full history, real hits get rotated                               |
+| IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`    | PR, `main`                       | high          | planned (#57), Brandon                                                                    |
+| Image        | Trivy                                                  | `main`, after build, before push | critical      | required (Lab 51), Brandon; if it can't run, a risk-register row with an owner and a date |
+| DAST         | OWASP ZAP baseline against the staging Route           | after a staging `promote`        | advisory      | not planned                                                                               |
 
 - **Start in report-only mode.** Dependabot already lists 45 alerts on `main` (1 critical, 22 high). Gating today would
   turn every PR red. Carter triages them first, then the gate becomes blocking, by CP3.
-- **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40).
+- **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
+  `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` carries the same
+  three fields.
+- **`npm audit` skips dev dependencies** (`--omit=dev`): only what ships to the browser is gated. Today that's 4 highs
+  in `@angular/*` 19.2.25, fixed only in Angular 22, so they're triaged, not force-upgraded (no `npm audit fix --force`).
+- **Dependabot alerts stay on** to watch `main` between builds. They don't gate anything; a finding they raise is
+  triaged in the same CSV.
 - **Dependency-Check needs an NVD API key** (`NVD_API_KEY`) and a cached data directory. Without them, the first update
   is extremely slow and burns Actions minutes.
 
@@ -91,8 +98,8 @@ environment strategy.
 ## Open
 
 1. **Registry:** GHCR, the OpenShift internal registry, or ECR. Ask Adel.
-2. **SAST tool:** Semgrep CE or SpotBugs with FindSecBugs. Lab 51 says the tool is the instructor's call, so ask Adel
-   first; if he has no preference, Carter decides.
+2. **SAST tool:** CodeQL (#53). Code scanning on a private repo needs GitHub Code Security, so ask Adel whether the repo
+   can go public; if not, Semgrep CE. Lab 51 says the tool is the instructor's call.
 3. **Frontend image:** nginx, or served by `crm-api`. Chad decides, with Brandon; it's tied to the API URL rule in the
    environment strategy.
 4. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
@@ -101,7 +108,7 @@ environment strategy.
 ## Order
 
 1. Real `frontend` and `backend` jobs (#39) for CP1. They go green once `InteractionService` merges.
-2. `scan` in report-only mode after Module 40, then blocking by CP3.
+2. `scan` (#55, #52, #53) in report-only mode after Module 40, then blocking by CP3.
 3. `iac-check` alongside the first Terraform / Ansible files.
 4. `image` with its digest and Trivy scan, and the first trivial staging deploy (manual `promote`) as soon as `oc`
    access exists.
