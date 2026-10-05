@@ -17,7 +17,7 @@ correlation ID `lab-request-001`.
 | Layer         | Technology                                                                                     |
 |---------------|------------------------------------------------------------------------------------------------|
 | UI            | Angular 19, TypeScript, signals + RxJS, `HttpClient` with functional interceptors              |
-| API           | Spring Boot 3.3 on Java 21 (Maven), REST / JSON, Bean Validation, Problem Details errors       |
+| API           | Spring Boot 3.5 on Java 21 (Maven), REST / JSON, Bean Validation, Problem Details errors       |
 | Security      | Spring Security OAuth2 resource server, self-issued RS256 JWTs, roles AGENT / ADMIN (ADR 0006) |
 | Data          | PostgreSQL 16, Spring Data JPA, Flyway migrations                                              |
 | Messaging     | Apache Kafka via `spring-kafka`, versioned events                                              |
@@ -76,7 +76,7 @@ flowchart LR
 | Container  | Technology      | Responsibility                                                                | Runs locally as                         |
 |------------|-----------------|-------------------------------------------------------------------------------|-----------------------------------------|
 | `crm-ui`   | Angular 19      | agent screens, calls the API; never decides access                            | `npx ng serve` on :4200                 |
-| `crm-api`  | Spring Boot 3.3 | authentication and authorization, business rules, persistence, events, health | `mvn spring-boot:run` on :8080          |
+| `crm-api`  | Spring Boot 3.5 | authentication and authorization, business rules, persistence, events, health | `mvn spring-boot:run` on :8080          |
 | PostgreSQL | 16              | customers, interactions, processed events                                     | `docker compose` on :5432               |
 | Kafka      | broker + topics | interaction events, dead-letter topic                                         | `docker compose` on :9092 (to be added) |
 
