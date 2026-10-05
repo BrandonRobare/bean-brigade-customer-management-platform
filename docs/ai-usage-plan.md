@@ -1,7 +1,10 @@
 # AI usage plan — TODO (Lab 48)
 
 ## Allowed
-- TODO (boilerplate, test drafts, IaC sketches…)
+- Boilerplate code generation (DTOs, Flyway, Kafka, Angular)
+- Test drafts
+- HCL/YAML sketches
+- docs
 
 ## Must verify
 - [ ] Angular changes compile and match DTOs
