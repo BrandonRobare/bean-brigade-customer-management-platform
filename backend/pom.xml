@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.3.5</version>
+    <version>3.5.16</version>
     <relativePath/>
   </parent>
   <groupId>com.northstar</groupId>
@@ -15,6 +15,9 @@
   <name>lab50-crm-backend</name>
   <properties>
     <java.version>21</java.version>
+    <tomcat.version>10.1.60</tomcat.version>
+    <postgresql.version>42.7.13</postgresql.version>
+    <dependency-check.version>12.2.2</dependency-check.version>
   </properties>
   <dependencies>
     <dependency>
@@ -66,4 +69,34 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>security-scan</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>${dependency-check.version}</version>
+            <configuration>
+              <formats>
+                <format>HTML</format>
+                <format>JSON</format>
+              </formats>
+              <failBuildOnCVSS>7</failBuildOnCVSS>
+              <suppressionFile>${project.basedir}/dependency-check-suppressions.xml</suppressionFile>
+              <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

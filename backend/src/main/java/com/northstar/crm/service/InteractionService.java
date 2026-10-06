@@ -27,9 +27,8 @@ public class InteractionService {
 
   @Transactional(readOnly = true)
   public List<InteractionResponse> list(String customerId) {
-    // TODO: reject unknown customer; return interactions for public id newest-first
     if (!customerRepository.existsByPublicId(customerId)) {
-      throw new IllegalArgumentException("Unknown customer: " + customerId);
+      throw new UnknownCustomerException(customerId);
     }
     return interactionRepository.findByCustomer_PublicIdOrderByCreatedAtDesc(customerId).stream()
         .map(
@@ -46,7 +45,6 @@ public class InteractionService {
 
   @Transactional
   public InteractionResponse create(CreateInteractionRequest request, String correlationHeader) {
-    // TODO: resolve customer CUS-1001; persist; return DTO (not the entity)
     CustomerEntity customer =
         customerRepository
             .findByPublicId(request.customerId())
