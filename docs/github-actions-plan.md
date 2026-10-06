@@ -21,12 +21,12 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 ## Triggers
 
-| Event                        | Workflow          | Jobs                                                     | Deploys to                                     |
-|------------------------------|-------------------|----------------------------------------------------------|------------------------------------------------|
-| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check        | nothing                                        |
-| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image | nothing                                        |
-| tag `v*`                     | `capstone-cd.yml` | promote                                                  | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                            | the chosen environment (staging or production) |
+| Event                        | Workflow          | Jobs                                                                         | Deploys to                                     |
+|------------------------------|-------------------|------------------------------------------------------------------------------|------------------------------------------------|
+| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build + scan)      | nothing                                        |
+| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build, scan, push) | nothing                                        |
+| tag `v*`                     | `capstone-cd.yml` | promote                                                                      | production                                     |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | the chosen environment (staging or production) |
 
 ## Jobs and Gates
 
@@ -38,7 +38,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `sast`      | PR, `main`                                            | Semgrep CE 1.178.0 with `p/java`, `p/typescript` and `p/owasp-top-ten` over the whole repo (#53)                                                                                             | report-only until triage, then yes | Brandon                   | `semgrep-report` artifact + job summary; triage in `docs/security-findings.csv`                                  |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
-| `image`     | `main`                                                | build the `crm-api` image from the verified JAR, scan it with Trivy, push once, record the digest                                                                                            | n/a                                | Brandon; Dockerfile Bryan | `artifact-manifest.json` artifact, Trivy report and job summary                                                  |
+| `image`     | PR (build + scan), `main` (push)                      | build the `crm-api` image from the verified JAR and scan it with Trivy on every run; on `main`, push once to GHCR and record the digest (#49)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy.json`) and job summary                                 |
 | `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
 | `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
 | `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
@@ -53,14 +53,14 @@ set it to 1.
 
 ## Scans
 
-| Scan         | Tool                                                     | When                             | Fails at      | Status                                                                                    |
-|--------------|----------------------------------------------------------|----------------------------------|---------------|-------------------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                       | CVSS 7 / high | Dependency-Check report-only (#55); `npm audit` planned (#52), Carter                     |
-| SAST         | Semgrep CE (`p/java`, `p/typescript`, `p/owasp-top-ten`) | PR, `main`                       | ERROR         | report-only (#53), Brandon; CodeQL needs GitHub Code Security on a private repo           |
-| Secrets      | gitleaks                                                 | PR, `main`                       | any finding   | blocking (#56), Brandon; full history, real hits get rotated                              |
-| IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                       | high          | planned (#57), Brandon                                                                    |
-| Image        | Trivy                                                    | `main`, after build, before push | critical      | required (Lab 51), Brandon; if it can't run, a risk-register row with an owner and a date |
-| DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`        | advisory      | not planned                                                                               |
+| Scan         | Tool                                                     | When                                 | Fails at      | Status                                                                          |
+|--------------|----------------------------------------------------------|--------------------------------------|---------------|---------------------------------------------------------------------------------|
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check report-only (#55); `npm audit` planned (#52), Carter           |
+| SAST         | Semgrep CE (`p/java`, `p/typescript`, `p/owasp-top-ten`) | PR, `main`                           | ERROR         | report-only (#53), Brandon; CodeQL needs GitHub Code Security on a private repo |
+| Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
+| IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | planned (#57), Brandon                                                          |
+| Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
+| DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`            | advisory      | not planned                                                                     |
 
 - **Start in report-only mode.** Dependabot already lists 45 alerts on `main` (1 critical, 22 high). Gating today would
   turn every PR red. Carter triages them first, then the gate becomes blocking, by CP3.
@@ -88,11 +88,14 @@ set it to 1.
   the merge. It scans the PR's whole history, so a secret deleted in a later commit still fails: rotate it, then
   rewrite the branch or add it to `.gitleaksignore` with a reason. The `change-me` database password in CI,
   `compose.yaml` and the `application.yml` default isn't flagged: it's a local placeholder.
+- **First Trivy image scan:** 0 critical, so the push goes ahead. The Ubuntu base has nothing above medium (45 medium,
+  4 low). The 5 highs are all Jackson 2.21.4 inside the JAR, fixed in 2.21.7 (`tv-001`). Dependency-Check missed them:
+  Trivy reads the GitHub advisory database, which had them before the NVD did.
 
 ## Artifact Identity
 
 - **JAR:** `SHA256SUMS` with the commit and the run number (Lab 43).
-- **Image:** pushed as `<registry>/crm-api:sha-<commit>` so the `promote` job can find it. It's deployed only as
+- **Image:** pushed as `ghcr.io/brandonrobare/crm-api:sha-<commit>` so the `promote` job can find it. It's deployed only as
   `@sha256:<digest>`, and `:latest` is never used.
 - **`artifact-manifest.json`:** version, commit, run ID, JAR checksum and image digest, the shape from Lab 44.
 - **Tags:** `v0.1.0` at CP2, `v1.0.0` for the demo. A tag never moves; a fix gets a new version.
@@ -115,12 +118,15 @@ environment strategy.
 doesn't include. The Module 40 deck (p.29) lists Semgrep with SonarQube and CodeQL as SAST tools, and Lab 51 leaves the
 tool to the instructor. If the repo goes public, CodeQL can run beside it.
 
+**Registry:** GHCR (#49). The `image` job pushes with the built-in `GITHUB_TOKEN` (`packages: write` on that job only),
+so there's no registry secret. The package is private like the repo, so OpenShift pulls it with a pull secret (a token
+with `read:packages`) in each project. Moving to the OpenShift registry or ECR later changes only the push step.
+
 ## Open
 
-1. **Registry:** GHCR, the OpenShift internal registry, or ECR. Ask Adel.
-2. **Frontend image:** nginx, or served by `crm-api`. Chad decides, with Brandon; it's tied to the API URL rule in the
+1. **Frontend image:** nginx, or served by `crm-api`. Chad decides, with Brandon; it's tied to the API URL rule in the
    environment strategy.
-3. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
+2. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
    until then.
 
 ## Order
