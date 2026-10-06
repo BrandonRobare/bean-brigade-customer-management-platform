@@ -13,6 +13,7 @@ Every slide claim must point here. Paths relative to `lab52-capstone/` (or your 
 | Pipeline / digest | Lab 51 `docs/capstone-cicd-runbook.md` | 51 | Y/N |
 | Dependency scan + triage | `docs/security-findings.csv` (dc-001 to dc-007), PR #59, main run 37382274523 (`dependency-check-report` artifact, expires 2027-01-03) | 51 | Y |
 | SAST (Semgrep CE) | `reports/semgrep-report-pr61.json`, `docs/security-findings.csv` (sg-001, sg-002), PR #61 run 37390512731 | 51 | Y |
+| Secrets scan (gitleaks) | `capstone-ci.yml` `secrets` job, PR #62 run 37393428246, `main` run 37393741147, required check in `protect-main` | 51 | Y |
 | Rollback | Lab 51 runbook / `oc rollout undo` | 51 | Y/N |
 | Deny 401/404 | notes/lab-50 or lab-51 | 50–51 | Y/N |
 
