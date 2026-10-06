@@ -32,25 +32,24 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 | Job         | Runs on                                               | What it does                                                                                                                                                                                 | Blocks merge                       | Owner                     | Evidence                                                                                                         |
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
-| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | yes                                | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
-| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | yes                                | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
+| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
+| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | no                                 | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
 | `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), `trivy config` on `openshift/` and `infra/` (#57)                                                            | report-only until triage, then yes | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | Semgrep CE 1.178.0 with `p/java`, `p/typescript` and `p/owasp-top-ten` over the whole repo (#53)                                                                                             | report-only until triage, then yes | Brandon                   | `semgrep-report` artifact + job summary; triage in `docs/security-findings.csv`                                  |
-| `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | when required; fails on any leak   | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
+| `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
 | `image`     | `main`                                                | build the `crm-api` image from the verified JAR, scan it with Trivy, push once, record the digest                                                                                            | n/a                                | Brandon; Dockerfile Bryan | `artifact-manifest.json` artifact, Trivy report and job summary                                                  |
 | `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
 | `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
 | `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
 
-**Required checks:** `frontend` and `backend`, enforced by the `protect-main` ruleset, so those job IDs must not be
-renamed. `scan` and `sast` join them once the current findings are triaged; `secrets` can join now, since the history
-is clean. Don't put path filters on a required job: a PR that skips it waits on the check forever. **Not set yet:** as
-of 2026-10-05 the ruleset has no required checks, so a red job doesn't stop a merge.
+**Required checks:** `secrets`, enforced by the `protect-main` ruleset, so that job ID must not be renamed. `scan` and
+`sast` join once the current findings are triaged. Don't put path filters on a required job: a PR that skips it waits
+on the check forever.
 
 **Branch rules (`protect-main`):** PR required, 1 approval from someone other than the author, stale approvals
-dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals as
-of 2026-10-05; set it to 1.
+dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals;
+set it to 1.
 
 ## Scans
 
@@ -75,20 +74,20 @@ of 2026-10-05; set it to 1.
 - **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data weekly either way.
   Dependabot and fork PRs don't get the secret, so they update at the keyless rate limit. Pinned to 12.2.2: 13.0.0
   fails without a key (upstream dependency-check/DependencyCheck#8715).
-- **First Dependency-Check triage (2026-10-05):** Boot 3.3.5 scanned at 25 Critical / 46 High. Boot 3.5.16 with
+- **First Dependency-Check triage:** Boot 3.3.5 scanned at 25 Critical / 46 High. Boot 3.5.16 with
   `tomcat.version` 10.1.60 and `postgresql.version` 42.7.13 fixed the reachable ones; the 13 left in Spring Framework
   6.2.19 and Log4j are false positives (module not on the classpath) or unused features accepted until 2026-12-31
   (`dc-001` to `dc-007`). Suppressions match the product's jars at that exact version, so an upgrade brings them back
   for review. The backend gate passes, so it can go blocking once CI confirms it.
-- **First Semgrep run (2026-10-05):** 0 findings in the Java and TypeScript code. `p/owasp-top-ten` also scans workflow
+- **First Semgrep run:** 0 findings in the Java and TypeScript code. `p/owasp-top-ten` also scans workflow
   YAML and found 13: a shell injection in `capstone-cd.yml` (`sg-001`) and 12 actions pinned to a tag instead of a
   commit SHA (`sg-002`). None of the three packs flags a disabled CSRF (`csrf(c -> c.disable())`), so that stays a
   manual SAST check, as in Lab 40.
-- **First gitleaks run (2026-10-05):** 15 commits, no leaks, so the job fails on any finding from the start, with no
-  report-only phase. It stops a merge only once `secrets` is a required check. It scans the PR's whole history, so a
-  secret deleted in a later commit still fails: rotate it, then rewrite the branch or add it to `.gitleaksignore` with
-  a reason. The `change-me` database password in CI, `compose.yaml` and the `application.yml` default isn't flagged:
-  it's a local placeholder.
+- **First gitleaks run:** 15 commits, no leaks, so the job fails on any finding from the start, with no report-only
+  phase. CI on PR #62 agreed: 17 commits on the PR run, 16 on `main`, no leaks. It's a required check, so a leak stops
+  the merge. It scans the PR's whole history, so a secret deleted in a later commit still fails: rotate it, then
+  rewrite the branch or add it to `.gitleaksignore` with a reason. The `change-me` database password in CI,
+  `compose.yaml` and the `application.yml` default isn't flagged: it's a local placeholder.
 
 ## Artifact Identity
 
