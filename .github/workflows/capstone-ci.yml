@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - run: npx ng build --configuration=production
 
-  # --- backend: mvn verify against postgres, JAR + checksum on main ---
+  # --- backend: mvn verify against postgres, JAR + checksum for the image job ---
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -63,22 +63,20 @@ jobs:
           cache: maven
       - name: Verify
         run: mvn -B -ntp clean verify
-      # #49: package once on main, JAR + checksum from this verify. image step still to do.
       - name: Checksum JAR
-        if: github.ref == 'refs/heads/main'
         working-directory: backend/target
         run: |
           sha256sum *.jar > SHA256SUMS
           echo "commit=${GITHUB_SHA}" >> SHA256SUMS
           echo "run=${GITHUB_RUN_NUMBER}" >> SHA256SUMS
-      # #49: upload JAR + SHA256SUMS as the run artifact
+          echo "version=$(mvn -B -q -f ../pom.xml help:evaluate -Dexpression=project.version -DforceStdout)" >> SHA256SUMS
       - uses: actions/upload-artifact@v7
-        if: github.ref == 'refs/heads/main'
         with:
           name: crm-api-jar
           path: |
             backend/target/*.jar
             backend/target/SHA256SUMS
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
   # --- scan: OWASP Dependency-Check on maven deps ---
   scan:
@@ -202,4 +200,100 @@ jobs:
         with:
           name: gitleaks-report
           path: gitleaks.json
+          if-no-files-found: warn
+
+  # --- image: build from the verified JAR and Trivy scan on every run, push to GHCR on main only ---
+  image:
+    needs: [backend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: crm-api-jar
+          path: backend/target
+      - name: Verify JAR checksum
+        working-directory: backend/target
+        run: grep '\.jar$' SHA256SUMS | sha256sum -c -
+      - name: Build
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/crm-api"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          docker build \
+            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            -t "$image:sha-$GITHUB_SHA" backend
+      - name: Install Trivy
+        run: |
+          curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz
+          echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy_0.75.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
+      - name: Trivy DB cache day
+        id: trivy-day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.trivy-day.outputs.day }}
+          restore-keys: trivy-db-
+      - name: Trivy report
+        run: ./trivy image --quiet --format json --output trivy.json "$IMAGE:sha-$GITHUB_SHA"
+      - name: Trivy gate
+        run: ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 "$IMAGE:sha-$GITHUB_SHA"
+      - name: Push
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$GITHUB_SHA" | cut -d@ -f2)
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+      - name: Manifest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          sums=backend/target/SHA256SUMS
+          jq -n \
+            --arg version "$(sed -n 's/^version=//p' $sums)" \
+            --arg commit "$GITHUB_SHA" \
+            --arg run "$GITHUB_RUN_ID" \
+            --arg jar "$(awk '/\.jar$/ {print $1}' $sums)" \
+            --arg repo "$IMAGE" \
+            --arg digest "$DIGEST" \
+            '{application: "crm-api", version: $version, gitCommit: $commit, runId: $run, jarSha256: $jar,
+              imageRepository: $repo, imageDigest: $digest, builtBy: "capstone-ci"}' > artifact-manifest.json
+          cat artifact-manifest.json
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Image"
+            if [ -n "$DIGEST" ]; then
+              echo "Pushed \`$IMAGE@$DIGEST\`. Deploy by this digest, never by tag."
+            elif [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "PR run: not pushed, only \`main\` pushes."
+            else
+              echo "Not pushed. Check the Trivy gate and Push steps."
+            fi
+            if [ -f trivy.json ]; then
+              echo
+              echo "| Severity | Findings |"
+              echo "|---|---|"
+              jq -r '[.Results[]?.Vulnerabilities[]?.Severity]
+                | if length == 0 then "| none | 0 |"
+                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy.json
+              echo
+              echo "Fails at CRITICAL. Full report in the \`image-report\` artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: image-report
+          path: |
+            artifact-manifest.json
+            trivy.json
           if-no-files-found: warn
