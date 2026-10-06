@@ -17,6 +17,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # --- frontend: npm ci + production build ---
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -32,6 +33,7 @@ jobs:
       - run: npm ci
       - run: npx ng build --configuration=production
 
+  # --- backend: mvn verify against postgres, JAR + checksum on main ---
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -78,6 +80,7 @@ jobs:
             backend/target/*.jar
             backend/target/SHA256SUMS
 
+  # --- scan: OWASP Dependency-Check on maven deps ---
   scan:
     runs-on: ubuntu-latest
     defaults:
@@ -90,7 +93,6 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      # #55: NVD data lives outside ~/.m2 so the maven cache doesn't swallow it. weekly key, newest older week as fallback
       - name: NVD cache week
         id: nvd-week
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
@@ -99,7 +101,6 @@ jobs:
           path: ~/.dependency-check-data
           key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
           restore-keys: dependency-check-${{ runner.os }}-
-      # #55: report-only
       - name: Dependency-Check
         continue-on-error: true
         env:
@@ -130,4 +131,36 @@ jobs:
         with:
           name: dependency-check-report
           path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
+
+  # --- sast: Semgrep CE, java + typescript + owasp top 10 ---
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: pipx install semgrep==1.178.0
+      - name: Semgrep
+        run: semgrep scan --config p/java --config p/typescript --config p/owasp-top-ten --metrics=off --json --output semgrep.json
+      - name: Findings summary
+        if: always()
+        run: |
+          {
+            echo "### Semgrep"
+            if [ -f semgrep.json ]; then
+              echo "| Severity | Findings |"
+              echo "|---|---|"
+              jq -r '[.results[].extra.severity]
+                | if length == 0 then "| none | 0 |"
+                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' semgrep.json
+              echo
+              echo "Triage in \`docs/security-findings.csv\`. Full report in the \`semgrep-report\` artifact."
+            else
+              echo "No report: the scan didn't finish. Check the Semgrep step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: semgrep-report
+          path: semgrep.json
           if-no-files-found: warn

@@ -11,6 +11,8 @@ Every slide claim must point here. Paths relative to `lab52-capstone/` (or your 
 | UI→PostgreSQL | Lab 50 `docs/frontend-persistence-demo.md` | 50 | Y/N |
 | Flyway | Lab 50 `V1__crm_schema.sql` | 50 | Y/N |
 | Pipeline / digest | Lab 51 `docs/capstone-cicd-runbook.md` | 51 | Y/N |
+| Dependency scan + triage | `docs/security-findings.csv` (dc-001 to dc-007), PR #59, main run 37382274523 (`dependency-check-report` artifact, expires 2027-01-03) | 51 | Y |
+| SAST (Semgrep CE) | `reports/semgrep-report-pr61.json`, `docs/security-findings.csv` (sg-001, sg-002), PR #61 run 37390512731 | 51 | Y |
 | Rollback | Lab 51 runbook / `oc rollout undo` | 51 | Y/N |
 | Deny 401/404 | notes/lab-50 or lab-51 | 50–51 | Y/N |
 
