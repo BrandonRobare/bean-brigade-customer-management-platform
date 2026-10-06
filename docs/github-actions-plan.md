@@ -65,8 +65,8 @@ set it to 1.
 - **Start in report-only mode.** Dependabot already lists 45 alerts on `main` (1 critical, 22 high). Gating today would
   turn every PR red. Carter triages them first, then the gate becomes blocking, by CP3.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
-  `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` carries the same
-  three fields.
+  `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
+  in `backend/.trivyignore.yaml` carries the same three fields.
 - **`npm audit` skips dev dependencies** (`--omit=dev`): only what ships to the browser is gated. Today that's 4 highs
   in `@angular/*` 19.2.25, fixed only in Angular 22, so they're triaged, not force-upgraded (no `npm audit fix --force`).
 - **Dependabot alerts stay on** to watch `main` between builds. They don't gate anything; a finding they raise is
@@ -91,6 +91,10 @@ set it to 1.
 - **First Trivy image scan:** 0 critical, so the push goes ahead. The Ubuntu base has nothing above medium (45 medium,
   4 low). The 5 highs are all Jackson 2.21.4 inside the JAR, fixed in 2.21.7 (`tv-001`). Dependency-Check missed them:
   Trivy reads the GitHub advisory database, which had them before the NVD did.
+- **First `main` image run:** blocked at the gate, so nothing was pushed. Trivy's DB picked up CVE-2026-47884 (XsltView
+  RCE in spring-webmvc 6.2.19) between the PR run and the merge. It was already accepted as `dc-006`, but only
+  Dependency-Check knew that. `backend/.trivyignore.yaml` (#65) gives the gate the same entry, scoped to 6.2.19 and
+  expiring 2026-12-31; the report step still lists it in `trivy.json`.
 
 ## Artifact Identity
 
