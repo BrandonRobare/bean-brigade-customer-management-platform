@@ -242,7 +242,7 @@ jobs:
       - name: Trivy report
         run: ./trivy image --quiet --format json --output trivy.json "$IMAGE:sha-$GITHUB_SHA"
       - name: Trivy gate
-        run: ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 "$IMAGE:sha-$GITHUB_SHA"
+        run: ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 --ignorefile backend/.trivyignore.yaml "$IMAGE:sha-$GITHUB_SHA"
       - name: Push
         if: github.ref == 'refs/heads/main'
         env:
@@ -286,7 +286,7 @@ jobs:
                 | if length == 0 then "| none | 0 |"
                   else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy.json
               echo
-              echo "Fails at CRITICAL. Full report in the \`image-report\` artifact."
+              echo "Fails at CRITICAL not triaged in \`backend/.trivyignore.yaml\`. Full report in the \`image-report\` artifact."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
