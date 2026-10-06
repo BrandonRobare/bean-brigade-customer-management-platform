@@ -1,14 +1,14 @@
-# Capstone CI/CD runbook — TODO (Lab 51)
+# Capstone CI/CD runbook
 
 ## Stack
 
-Angular + Spring Boot + PostgreSQL + GitHub Actions → OpenShift (`oc`).  
-Not Bitbucket. Not k3s/`kubectl`.
+Angular + Spring Boot + PostgreSQL + GitHub Actions → the course's k3s cluster, namespace `student08` (`kubectl`).  
+Not Bitbucket. The brief says OpenShift; see R-02 in `docs/risk-register.md`.
 
 ## Secret names only
 
-- `OC_SERVER` — TODO
-- `OC_TOKEN` — TODO
+- `KUBECONFIG`: `production` environment secret, the `student08` kubeconfig
+- `ghcr-pull`: Kubernetes `docker-registry` Secret in `student08`, a token with `read:packages`
 
 Never paste cluster credentials into this file.
 
@@ -92,12 +92,12 @@ Deploy by `@sha256:<digest>` only, never by tag.
 
 ## Promote
 
-Digest from CI → `oc set image` — TODO env names (`crm-test` / `crm-staging` / `crm-prod`)
+Digest from CI → `kubectl set image` in `student08` (production only, no staging: R-01). TODO
 
 ## Smoke
 
-`CUS-1001` via Route + `lab-request-001` — TODO
+`CUS-1001` via the Ingress host + `lab-request-001`. TODO
 
 ## Rollback
 
-`oc rollout undo` — TODO
+`kubectl rollout undo`. TODO
