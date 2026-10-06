@@ -21,12 +21,12 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 ## Triggers
 
-| Event                        | Workflow          | Jobs                                            | Deploys to                                     |
-|------------------------------|-------------------|-------------------------------------------------|------------------------------------------------|
-| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, iac-check        | nothing                                        |
-| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, iac-check, image | nothing                                        |
-| tag `v*`                     | `capstone-cd.yml` | promote                                         | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                   | the chosen environment (staging or production) |
+| Event                        | Workflow          | Jobs                                                     | Deploys to                                     |
+|------------------------------|-------------------|----------------------------------------------------------|------------------------------------------------|
+| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check        | nothing                                        |
+| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image | nothing                                        |
+| tag `v*`                     | `capstone-cd.yml` | promote                                                  | production                                     |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                            | the chosen environment (staging or production) |
 
 ## Jobs and Gates
 
@@ -34,8 +34,9 @@ each build lands is in [the environment strategy](environment-strategy.md).
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
 | `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | yes                                | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
 | `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | yes                                | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), gitleaks (#56), `trivy config` on `openshift/` and `infra/` (#57)                                            | report-only until triage, then yes | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), `trivy config` on `openshift/` and `infra/` (#57)                                                            | report-only until triage, then yes | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | Semgrep CE 1.178.0 with `p/java`, `p/typescript` and `p/owasp-top-ten` over the whole repo (#53)                                                                                             | report-only until triage, then yes | Brandon                   | `semgrep-report` artifact + job summary; triage in `docs/security-findings.csv`                                  |
+| `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | when required; fails on any leak   | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
 | `image`     | `main`                                                | build the `crm-api` image from the verified JAR, scan it with Trivy, push once, record the digest                                                                                            | n/a                                | Brandon; Dockerfile Bryan | `artifact-manifest.json` artifact, Trivy report and job summary                                                  |
 | `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
@@ -43,11 +44,13 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
 
 **Required checks:** `frontend` and `backend`, enforced by the `protect-main` ruleset, so those job IDs must not be
-renamed. `scan` and `sast` join them once the current findings are triaged. Don't put path filters on a required job:
-a PR that skips it waits on the check forever.
+renamed. `scan` and `sast` join them once the current findings are triaged; `secrets` can join now, since the history
+is clean. Don't put path filters on a required job: a PR that skips it waits on the check forever. **Not set yet:** as
+of 2026-10-05 the ruleset has no required checks, so a red job doesn't stop a merge.
 
 **Branch rules (`protect-main`):** PR required, 1 approval from someone other than the author, stale approvals
-dismissed on push, squash merge only, no force pushes or deletion, no bypass.
+dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals as
+of 2026-10-05; set it to 1.
 
 ## Scans
 
@@ -55,7 +58,7 @@ dismissed on push, squash merge only, no force pushes or deletion, no bypass.
 |--------------|----------------------------------------------------------|----------------------------------|---------------|-------------------------------------------------------------------------------------------|
 | Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                       | CVSS 7 / high | Dependency-Check report-only (#55); `npm audit` planned (#52), Carter                     |
 | SAST         | Semgrep CE (`p/java`, `p/typescript`, `p/owasp-top-ten`) | PR, `main`                       | ERROR         | report-only (#53), Brandon; CodeQL needs GitHub Code Security on a private repo           |
-| Secrets      | gitleaks                                                 | PR, `main`                       | any finding   | planned (#56), Brandon; full history, real hits get rotated                               |
+| Secrets      | gitleaks                                                 | PR, `main`                       | any finding   | blocking (#56), Brandon; full history, real hits get rotated                              |
 | IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                       | high          | planned (#57), Brandon                                                                    |
 | Image        | Trivy                                                    | `main`, after build, before push | critical      | required (Lab 51), Brandon; if it can't run, a risk-register row with an owner and a date |
 | DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`        | advisory      | not planned                                                                               |
@@ -81,6 +84,11 @@ dismissed on push, squash merge only, no force pushes or deletion, no bypass.
   YAML and found 13: a shell injection in `capstone-cd.yml` (`sg-001`) and 12 actions pinned to a tag instead of a
   commit SHA (`sg-002`). None of the three packs flags a disabled CSRF (`csrf(c -> c.disable())`), so that stays a
   manual SAST check, as in Lab 40.
+- **First gitleaks run (2026-10-05):** 15 commits, no leaks, so the job fails on any finding from the start, with no
+  report-only phase. It stops a merge only once `secrets` is a required check. It scans the PR's whole history, so a
+  secret deleted in a later commit still fails: rotate it, then rewrite the branch or add it to `.gitleaksignore` with
+  a reason. The `change-me` database password in CI, `compose.yaml` and the `application.yml` default isn't flagged:
+  it's a local placeholder.
 
 ## Artifact Identity
 
