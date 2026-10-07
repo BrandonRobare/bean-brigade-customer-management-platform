@@ -35,10 +35,17 @@ The flow is:
 
 save interaction -> database commit -> publish `CustomerInteractionRecordedV1`
 
+The service publishes an application event inside the transaction, and a
+`@TransactionalEventListener(phase = AFTER_COMMIT)` sends it to Kafka, so the send
+only runs once the commit has succeeded. `KafkaTemplate.send()` is never called
+directly inside the `@Transactional` method.
+
 If the database transaction rolls back, no event is published.
 
 If the database commits but Kafka publication fails, the interaction remains stored
-in PostgreSQL and the publish failure is logged.
+in PostgreSQL and the API still returns 201. `KafkaTemplate.send()` is asynchronous,
+so the failure is logged in its completion callback with the `eventId` and
+`correlationId`. The event is not re-sent.
 
 ### Consequences
 
@@ -46,6 +53,7 @@ in PostgreSQL and the publish failure is logged.
 - Good, because the implementation is simpler than a transactional outbox
 - Bad, because Kafka publication can still fail after the database has successfully committed
 - Bad, because a committed interaction could exist without its corresponding event
+- Bad, because a lost event is not re-sent; it only shows up in the logs
 
 ### Confirmation
 
@@ -58,4 +66,4 @@ in PostgreSQL and the publish failure is logged.
 
 - Revisit if: guaranteed event delivery after a successful database commit becomes required
 - Confidence: high
-- Links: ADR 0003, Kafka publisher issue, messaging section of `docs/architecture.md`
+- Links: ADR 0003, #12, publisher #30, messaging section of `docs/architecture.md`

@@ -39,17 +39,19 @@ and skip an event if Kafka delivers it again.
 
 The V1 event contains:
 
-- `eventId`
-- `eventType`
-- `eventVersion`
-- `interactionId`
-- `customerId`
+- `eventId`: a new UUID for each event
+- `eventType`: `CustomerInteractionRecorded`
+- `eventVersion`: the string `"1"`
+- `interactionId`: the interaction's UUID
+- `customerId`: the public `CUS-XXXX` ID from ADR 0002, also the Kafka key
 - `interactionType`
-- `correlationId`
-- `actor`
-- `occurredAt`
+- `correlationId`: the request's `X-Correlation-ID`
+- `actor`: the JWT `sub` of the user who recorded the interaction (ADR 0006)
+- `occurredAt`: ISO-8601 UTC timestamp
 
-The event starts at version 1. Additive changes that do not break existing consumers can remain part of V1. A breaking change to the contract requires a new V2 event contract instead of changing V1 in place.
+The event never carries the interaction's free-text summary.
+
+The event starts at version 1. Additive changes that do not break existing consumers can remain part of V1. Consumers ignore fields they don't know, so an added field doesn't break them. A breaking change requires a new `CustomerInteractionRecordedV2` on `crm.customer.interactions.v2` instead of changing V1 in place.
 
 ### Consequences
 
@@ -76,4 +78,4 @@ The event starts at version 1. Additive changes that do not break existing consu
 
 - Revisit if: the project introduces a schema registry or needs to support several event contract versions at the same time.
 - Confidence: high
-- Links: CAP-12, Kafka publisher issue, Kafka consumer issue, messaging section of `docs/architecture.md`
+- Links: CAP-12, #10, publisher #30, consumer #31, messaging section of `docs/architecture.md`
