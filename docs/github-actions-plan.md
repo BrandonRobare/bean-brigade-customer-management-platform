@@ -6,13 +6,13 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 ## Rules
 
-1. The pipeline is the only way code reaches OpenShift. Nobody deploys from a laptop or edits the cluster by hand.
+1. The pipeline is the only way code reaches the cluster. Nobody deploys from a laptop or edits the cluster by hand.
 2. The gate order is fixed: build → verify → scan → publish → deploy.
-3. Build once. The image is built and pushed once per `main` commit, from the JAR that the same run verified. Staging
-   and production get the same digest, and nothing is rebuilt to deploy.
+3. Build once. The image is built and pushed once per `main` commit, from the JAR that the same run verified.
+   Production gets that digest, and nothing is rebuilt to deploy.
 4. Deploys never run on `pull_request` or on a push to `main`. A person starts every deploy: the course's manual
    approval (Lab 48).
-5. Secrets live in GitHub Environment secrets and OpenShift Secrets. Docs name them and never show values, and
+5. Secrets live in GitHub Environment secrets and Kubernetes Secrets. Docs name them and never show values, and
    workflows never echo them.
 6. Test and scan reports are kept as run artifacts. The ones that prove a claim are copied to `reports/` with a row in
    `defense/evidence-index.md`. For Dependency-Check (#55), keep JSON/HTML in run artifacts and link their runs without
@@ -27,7 +27,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build + scan)      | nothing                                        |
 | push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build, scan, push) | nothing                                        |
 | tag `v*`                     | `capstone-cd.yml` | promote                                                                      | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | the chosen environment (staging or production) |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | production                                     |
 
 ## Jobs and Gates
 
@@ -40,13 +40,13 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
 | `image`     | PR (build + scan), `main` (push)                      | after `frontend`, `backend`, `sast` and `secrets` pass, build `crm-api` from the verified JAR and `crm-ui` from the verified `dist/`, Trivy-scan both on every run; on `main`, push both once to GHCR and record the pair (#49, #68)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy-api.json`, `trivy-ui.json`) and job summary                                 |
-| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
-| `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
-| `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
+| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against `student08`, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
+| `promote`   | tag `v*`                                              | find the tagged commit's green `main` run, refuse any other manifest, write Secrets, roll API then UI by digest (`scripts/release.sh`), smoke (`scripts/smoke.sh`), record the result | n/a | Brandon | CD summary, `crm-release` ConfigMap |
+| `rollback`  | manual (`workflow_dispatch`)                          | restore the last pair whose smoke passed, then smoke again; refuses with no history or when it is already running | n/a | Brandon | CD run, [rollback runbook](rollback-runbook.md) |
 
 **Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
 GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
-successful `backend`, `scan` and `sast` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
+successful `frontend`, `backend`, `scan`, `sast` and `secrets` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
 its required-check setup remains separate work after confirming CI. Don't rename required job IDs or add path
 filters: a skipped required workflow can leave a PR waiting for its check.
 
@@ -63,11 +63,11 @@ set it to 1.
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
 | IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | planned (#57), Brandon                                                          |
 | Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
-| DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`            | advisory      | not planned                                                                     |
+| DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
 
 - **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
-  Dependency-Check and CodeQL have completed their initial triage and now fail CI; the planned npm audit and IaC
-  gates remain separate work.
+  Dependency-Check and CodeQL have completed their initial triage and now fail CI; `npm audit` runs report-only and the IaC
+  gate remains separate work.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
   `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
   in `backend/.trivyignore.yaml` carries the same three fields.
@@ -134,14 +134,15 @@ set it to 1.
 | Name               | Stored as                                                                      | Used by                                                                              |
 |--------------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
 | `GITHUB_TOKEN`     | built in, minted per run                                                       | pushing the image (if the registry is GHCR), with `packages: write` on that job only |
-| `OPENSHIFT_SERVER` | `staging` and `production` environment secret                                  | `oc login`                                                                           |
-| `OPENSHIFT_TOKEN`  | `staging` and `production` environment secret, one service account per project | `oc login`                                                                           |
+| `KUBECONFIG`       | `production` environment secret: the `student08` kubeconfig (service account token, cluster CA) | `kubectl` in `promote` and `rollback`                                |
 | `NVD_API_KEY`      | repository secret                                                              | Dependency-Check (`scan` job), optional                                              |
 
-Runtime secrets (database password, JWT keys, demo passwords) live in OpenShift Secrets, not in GitHub. See the
+Runtime secrets (database password, JWT keys, demo passwords) live in Kubernetes Secrets in `student08`, not in GitHub. See the
 environment strategy.
 
-**OIDC:** OIDC over stored credentials. We use a service account token per project, stored as an environment secret and revoked after.
+**OIDC:** Lab 51 prefers OIDC over stored credentials, but the cluster would have to trust GitHub's issuer, which needs
+admin on the instructor's cluster. So `KUBECONFIG` holds the instructor-issued token, in the `production` environment
+only (R-07).
 
 **SAST:** CodeQL (#53), since the repo went public on 2026-10-07. Module 51 (p.18) and Lab 51 Step 3 require a SAST gate
 that can fail the job; p.19 shows CodeQL's init, build, analyze flow, which this job follows. Semgrep CE was the
@@ -150,14 +151,13 @@ evidence of `sg-001`/`sg-002`. Leave GitHub's code scanning *default setup* off:
 workflow. Source: [CodeQL action](https://github.com/github/codeql-action), [SARIF security-severity](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning).
 
 **Registry:** GHCR (#49). The `image` job pushes with the built-in `GITHUB_TOKEN` (`packages: write` on that job only),
-so there's no registry secret. The package is private like the repo, so OpenShift pulls it with a pull secret (a token
-with `read:packages`) in each project. Moving to the OpenShift registry or ECR later changes only the push step.
+so there's no registry secret in GitHub. The package is private like the repo, so the cluster pulls it with the
+`ghcr-pull` Secret (a classic token with `read:packages`) in `student08` (R-08). Moving to another registry later changes
+only the push step and that Secret.
 
 ## Open
 
-1. **Frontend image:** nginx, or served by `crm-api`. Chad decides, with Brandon; it's tied to the API URL rule in the
-   environment strategy.
-2. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
+1. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
    until then.
 
 ## Order
@@ -167,6 +167,6 @@ with `read:packages`) in each project. Moving to the OpenShift registry or ECR l
    `sast` (#53) also gates `image`; its required-check setup remains pending. Add and triage the remaining scans
    separately (#52, #57).
 3. `iac-check` alongside the first Terraform / Ansible files.
-4. `image` with its digest and Trivy scan, and the first trivial staging deploy (manual `promote`) as soon as `oc`
-   access exists.
-5. `promote`, smoke, `rollback` and `iac-plan` by CP3. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.
+4. `image` with its digest and Trivy scan, and the first trivial deploy to `student08` (manual `promote`) now that
+   cluster access exists (2026-10-06).
+5. `crm-ui` in the `image` job (#68), then `promote`, smoke, `rollback` and `iac-plan` by CP3. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.

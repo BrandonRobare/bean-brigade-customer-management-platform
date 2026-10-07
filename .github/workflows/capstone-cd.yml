@@ -1,33 +1,123 @@
-# CD sketch — fill TODOs then promote a digest (never rebuild)
+# .github/workflows/capstone-cd.yml
 name: Capstone CD
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Target environment"
+      action:
+        description: "Restore the last release whose smoke passed"
         required: true
         type: choice
-        options: [test, staging, production]
-      artifact_digest:
-        description: "Image digest from CI"
-        required: true
+        options: [rollback]
+
+permissions:
+  contents: read
+  actions: read
+
+# one release at a time, and never cancel one halfway through
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: student08
+  KUBECONFIG: ${{ github.workspace }}/.kube/config
 
 jobs:
+  # --- promote: deploy the API/UI pair main already built for the tagged commit, then smoke ---
   promote:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    # TODO: environment: ${{ inputs.environment }}
+    environment: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Deploy pinned digest
+      - name: Find the main CI run for this commit
         env:
-          DIGEST: ${{ inputs.artifact_digest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::artifact_digest must be sha256: followed by 64 lowercase hexadecimal digits."
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow capstone-ci.yml --branch main --event push \
+            --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful main CI run for $GITHUB_SHA. Tag a commit that main has built."
             exit 1
           fi
-          # TODO: echo oc project / oc set image by digest — never rebuild the JAR here
-          echo "TODO: oc set image deployment/crm-api …@$DIGEST"
-      # TODO: non-prod smoke for CUS-1001 + lab-request-001
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name image-report --dir release
+          echo "Releasing the pair from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id" >> "$GITHUB_STEP_SUMMARY"
+      - name: Cluster credentials
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$KUBECONFIG")"
+          printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+      - name: Secrets
+        env:
+          CRM_DB_PASSWORD: ${{ secrets.CRM_DB_PASSWORD }}
+          CRM_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
+          CRM_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
+          CRM_JWT_PRIVATE_KEY: ${{ secrets.CRM_JWT_PRIVATE_KEY }}
+          CRM_JWT_PUBLIC_KEY: ${{ secrets.CRM_JWT_PUBLIC_KEY }}
+          CRM_TLS_CERT: ${{ secrets.CRM_TLS_CERT }}
+          CRM_TLS_KEY: ${{ secrets.CRM_TLS_KEY }}
+        run: bash scripts/release.sh secrets
+      - name: Deploy
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_REGISTRY: ghcr.io/${{ github.repository_owner }}/
+          PLATFORM_HOSTNAME: ${{ vars.PLATFORM_HOSTNAME }}
+          INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
+          STORAGE_CLASS: ${{ vars.STORAGE_CLASS }}
+          INGRESS_NAMESPACE: ${{ vars.INGRESS_NAMESPACE }}
+        run: |
+          export EXPECTED_REGISTRY="${EXPECTED_REGISTRY,,}"
+          bash scripts/release.sh deploy release/artifact-manifest.json
+      - name: Smoke
+        id: smoke
+        env:
+          SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
+          SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
+        run: bash scripts/smoke.sh
+      - name: Record result
+        if: always() && steps.smoke.outcome != 'skipped'
+        run: bash scripts/release.sh mark "${{ steps.smoke.outcome == 'success' && 'succeeded' || 'failed' }}"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Release $GITHUB_REF_NAME"
+            if [ "${{ steps.smoke.outcome }}" = success ]; then
+              echo "Deployed and smoke passed. This pair is now the rollback target."
+            else
+              echo "Not released: the deploy or smoke failed. The last known-good pair is unchanged; run the rollback job to restore it."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --- rollback: restore the last known-good pair, then smoke again ---
+  rollback:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Cluster credentials
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$KUBECONFIG")"
+          printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+      - name: Rollback
+        run: bash scripts/release.sh rollback
+      - name: Smoke
+        id: smoke
+        env:
+          SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
+          SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
+        run: bash scripts/smoke.sh
+      - name: Record result
+        if: always() && steps.smoke.outcome != 'skipped'
+        run: bash scripts/release.sh mark "${{ steps.smoke.outcome == 'success' && 'succeeded' || 'failed' }}"

@@ -4,7 +4,7 @@
 
 | Person  | role               | Lane               | Owns                                                                                                                |
 |---------|--------------------|--------------------|---------------------------------------------------------------------------------------------------------------------|
-| Brandon | team lead          | Security + release | JWT / RBAC, 401 / 403 tests, CORS, CI, image + digest, OpenShift, CD, probes, smoke, rollback                       |
+| Brandon | team lead          | Security + release | JWT / RBAC, 401 / 403 tests, CORS, CI, image + digest, k3s, CD, probes, smoke, rollback                       |
 | Bryan   | technical lead     | API + persistence  | customer + interaction endpoints, validation, Problem Details, Flyway `V2`+, JPA, tests                             |
 | Carter  | documentation lead | Kafka              | producer, consumer, DLT, correlation ID, Kafka ops                                                                  |
 | Chad    | presentation lead  | Angular            | search, profile, interaction form + timeline, interceptors, loading / error / empty states, accessibility, Selenium |

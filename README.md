@@ -2,7 +2,7 @@
 
 Bean Brigade's capstone for the Java & Angular Fullstack Bootcamp (Labs 48-52): a CRM slice where a service agent finds a customer and records an interaction.
 
-Angular → Spring Boot REST → PostgreSQL, with Kafka events, delivered through GitHub Actions to OpenShift.
+Angular → Spring Boot REST → PostgreSQL, with Kafka events, delivered through GitHub Actions to the course k3s cluster.
 
 ## Layout
 
