@@ -18,10 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     # TODO: environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Deploy pinned digest
+        env:
+          DIGEST: ${{ inputs.artifact_digest }}
         run: |
           set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::artifact_digest must be sha256: followed by 64 lowercase hexadecimal digits."
+            exit 1
+          fi
           # TODO: echo oc project / oc set image by digest — never rebuild the JAR here
-          echo "TODO: oc set image deployment/crm-api …@${{ inputs.artifact_digest }}"
+          echo "TODO: oc set image deployment/crm-api …@$DIGEST"
       # TODO: non-prod smoke for CUS-1001 + lab-request-001
