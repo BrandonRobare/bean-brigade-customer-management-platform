@@ -19,6 +19,7 @@ exit 1
 
 API_ROLLOUT_FAILS = """#!/bin/sh
 echo "$@" >> "{calls}"
+case "$*" in *"-f -"*) cat > /dev/null ;; esac
 case "$*" in
   *"rollout status deployment/crm-api"*) exit 1 ;;
   *"get configmap"*|*"get deployment"*) exit 1 ;;
