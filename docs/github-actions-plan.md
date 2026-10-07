@@ -15,7 +15,8 @@ each build lands is in [the environment strategy](environment-strategy.md).
 5. Secrets live in GitHub Environment secrets and OpenShift Secrets. Docs name them and never show values, and
    workflows never echo them.
 6. Test and scan reports are kept as run artifacts. The ones that prove a claim are copied to `reports/` with a row in
-   `defense/evidence-index.md`.
+   `defense/evidence-index.md`. For Dependency-Check (#55), keep JSON/HTML in run artifacts and link their runs without
+   committing the reports.
 7. A red `main` gets fixed before any new feature merges. A failing check is fixed, never skipped (`-DskipTests`,
    `@Disabled`, a lowered threshold).
 
@@ -34,7 +35,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
 | `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
 | `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | no                                 | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), `trivy config` on `openshift/` and `infra/` (#57)                                                            | report-only until triage, then yes | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55); `npm audit --omit=dev --audit-level=high` (#52) and `trivy config` on `openshift/` and `infra/` (#57) remain planned                                    | yes: required `scan`               | Carter                    | `dependency-check-report` artifact + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | CodeQL (`github/codeql-action` v4.38.2) on `java-kotlin` (traced `mvn compile`), `javascript-typescript` and `actions`, default query suite; results to the Security tab; `check-codeql-sarif.py` fails at security-severity 7.0+ (high/critical) or a missing/failed analysis (#53) | job blocking; required check pending | Brandon | `codeql-report` SARIF artifact, job summary, Security tab alerts; triage in `docs/security-findings.csv` |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
@@ -43,11 +44,11 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
 | `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
 
-**Required checks (live snapshot, 2026-10-06):** `secrets`, enforced by the `protect-main` ruleset, so that job ID must
-not be renamed. The #53 local branch now makes `sast` fail on blocking findings and makes `image` depend on
-`backend` and `sast`. After pushing this branch and confirming CI, add the observed `sast` check to `protect-main`,
-preserving `secrets`. This repository change does not edit GitHub settings. `scan` joins after its own blocking
-transition (#55/#25). Don't put path filters on a required job: a PR that skips it waits on the check forever.
+**Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
+GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
+successful `backend`, `scan` and `sast` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
+its required-check setup remains separate work after confirming CI. Don't rename required job IDs or add path
+filters: a skipped required workflow can leave a PR waiting for its check.
 
 **Branch rules (`protect-main`):** PR required, 1 approval from someone other than the author, stale approvals
 dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals;
@@ -57,16 +58,16 @@ set it to 1.
 
 | Scan         | Tool                                                     | When                                 | Fails at      | Status                                                                          |
 |--------------|----------------------------------------------------------|--------------------------------------|---------------|---------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check report-only (#55); `npm audit` planned (#52), Carter           |
-| SAST         | CodeQL (Java, TypeScript, Actions workflows)             | PR, `main`                           | high / critical (7.0+) | blocking on the #53 local branch; required-check and GitHub CI verification pending |
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` planned (#52), Carter |
+| SAST         | CodeQL (Java, TypeScript, Actions workflows)             | PR, `main`                           | high / critical (7.0+) | CodeQL job blocking; required-check setup pending |
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
 | IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | planned (#57), Brandon                                                          |
 | Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
 | DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`            | advisory      | not planned                                                                     |
 
-- **Start in report-only mode, then block after triage.** The initial Dependabot snapshot listed 45 alerts on `main`
-  (1 critical, 22 high). SAST findings are now fixed on the #53 local branch, so that job is blocking there; the
-  remaining scans complete their own triage before enforcement, by CP3.
+- **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
+  Dependency-Check and CodeQL have completed their initial triage and now fail CI; the planned npm audit and IaC
+  gates remain separate work.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
   `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
   in `backend/.trivyignore.yaml` carries the same three fields.
@@ -81,7 +82,17 @@ set it to 1.
   `tomcat.version` 10.1.60 and `postgresql.version` 42.7.13 fixed the reachable ones; the 13 left in Spring Framework
   6.2.19 and Log4j are false positives (module not on the classpath) or unused features accepted until 2026-12-31
   (`dc-001` to `dc-007`). Suppressions match the product's jars at that exact version, so an upgrade brings them back
-  for review. The backend gate passes, so it can go blocking once CI confirms it.
+  for review. The [2026-10-07 main scan](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37645992051/job/112876759213)
+  returned `BUILD SUCCESS` and uploaded JSON/HTML reports. Removing `continue-on-error` enforces the Maven result;
+  summaries and reports still run with `if: always()`, including on failure.
+- **Dependency-Check gate proof (2026-10-07):** the [PR #97 run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37670455515)
+  passed `scan` and `image`. Removing only the CVE-2026-47884 suppression in temporary PR #98 made its
+  [run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37671633077) fail
+  `scan` on `spring-core-6.2.19.jar` at CVSS 9.8. `image` was skipped; the findings summary and JSON/HTML report upload
+  succeeded. GitHub reported the open, non-draft PR as blocked while required `scan` failed and required `secrets`
+  passed. [PR #98](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/pull/98) records that
+  evidence and was closed without merging; its test branch was deleted. Before #55 closes, verify a successful
+  `main` scan and image job after merging #97 and add that run to `defense/evidence-index.md`.
 - **First Semgrep run:** 0 findings in the Java and TypeScript code. `p/owasp-top-ten` also scans workflow
   YAML and found 13: a shell injection in `capstone-cd.yml` (`sg-001`) and 12 actions pinned to a tag instead of a
   commit SHA (`sg-002`). None of the three packs flags a disabled CSRF (`csrf(c -> c.disable())`), so that stays a
@@ -150,7 +161,9 @@ with `read:packages`) in each project. Moving to the OpenShift registry or ECR l
 ## Order
 
 1. Real `frontend` and `backend` jobs (#39) for CP1. They go green once `InteractionService` merges.
-2. `scan` (#55, #52) through triage to blocking; `sast` (#53) has a blocking local implementation awaiting required-check setup and CI proof.
+2. Dependency-Check (#55) blocks CI, merging and image publication; confirm the post-merge `main` run. CodeQL
+   `sast` (#53) also gates `image`; its required-check setup remains pending. Add and triage the remaining scans
+   separately (#52, #57).
 3. `iac-check` alongside the first Terraform / Ansible files.
 4. `image` with its digest and Trivy scan, and the first trivial staging deploy (manual `promote`) as soon as `oc`
    access exists.
