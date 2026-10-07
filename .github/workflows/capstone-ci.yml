@@ -100,7 +100,6 @@ jobs:
           key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
           restore-keys: dependency-check-${{ runner.os }}-
       - name: Dependency-Check
-        continue-on-error: true
         env:
           NVD_SECRET: ${{ secrets.NVD_API_KEY }}
         run: |
@@ -204,7 +203,7 @@ jobs:
 
   # --- image: build from the verified JAR and Trivy scan on every run, push to GHCR on main only ---
   image:
-    needs: [backend]
+    needs: [backend, scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read
