@@ -42,6 +42,9 @@ was prepared locally to simulate kubelet fsGroup setup; this does not validate t
 Long logs and temporary verification scripts remain in the ignored local execution workspace. Temporary runtime
 containers, test volumes, networks and generated signing keys are removed after checking.
 
+Final review fix: `2c91c5d`; local batch completion recorded on 2026-10-07. All temporary test containers,
+volumes, networks and generated keys were removed. Final namespace inspection remained empty.
+
 ## Still pending
 
 - Instructor confirmation of k3s as the OpenShift assignment substitution.
