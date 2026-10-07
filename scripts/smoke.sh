@@ -11,7 +11,7 @@ if [ -n "${SMOKE_CACERT:-}" ]; then curl_args+=(--cacert "$SMOKE_CACERT"); fi
 failures=0
 
 request() {
-  curl "${curl_args[@]}" "$@" 2>/dev/null || echo 000
+  curl "${curl_args[@]}" "$@" 2>/dev/null || true
 }
 
 check() {
@@ -36,7 +36,7 @@ token_for() {
 check "readiness over trusted TLS" 200 "$(request "$base/actuator/health/readiness")" '.status == "UP"'
 check "UI served through the Ingress" 200 "$(request "$base/")"
 grep -q '<app-root' "$body" || { echo "FAIL UI body is not the Angular app"; failures=$((failures + 1)); }
-check "HTTP redirects to HTTPS" 308 "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "http://$host/" 2>/dev/null || echo 000)"
+check "HTTP redirects to HTTPS" 308 "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "http://$host/" 2>/dev/null || true)"
 check "anonymous API call is 401" 401 "$(request "$base/api/v1/interactions?customerId=CUS-1001")"
 check "wrong password is 401" 401 "$(login agent1 not-the-password)"
 
