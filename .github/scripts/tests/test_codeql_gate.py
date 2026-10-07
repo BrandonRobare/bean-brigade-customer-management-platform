@@ -1,4 +1,6 @@
+import datetime
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -9,7 +11,7 @@ import unittest
 GATE = Path(__file__).resolve().parents[1] / "check-codeql-sarif.py"
 
 
-def sarif(*scores, level="warning", rules_in="extensions", executed=True):
+def sarif(*scores, level="warning", rules_in="extensions", executed=True, path="src/App.java"):
     rules = [{"id": f"rule/{i}", "properties": {"security-severity": score}}
              for i, score in enumerate(scores) if score is not None]
     tool = {"driver": {"name": "CodeQL", "rules": []}}
@@ -22,14 +24,18 @@ def sarif(*scores, level="warning", rules_in="extensions", executed=True):
         "runs": [{
             "tool": tool,
             "invocations": [{"executionSuccessful": executed}],
-            "results": [{"ruleId": f"rule/{i}", "level": level} for i in range(len(scores))],
+            "results": [{"ruleId": f"rule/{i}", "level": level, "locations": [{"physicalLocation": {"artifactLocation": {"uri": path}}}]}
+                        for i in range(len(scores))],
         }],
     }
 
 
 class CodeqlGateTest(unittest.TestCase):
-    def run_gate(self, *reports):
+    def run_gate(self, *reports, exceptions=None):
         with tempfile.TemporaryDirectory() as directory:
+            env = {**os.environ, "CODEQL_EXCEPTIONS": str(Path(directory) / "exceptions.json")}
+            if exceptions is not None:
+                Path(env["CODEQL_EXCEPTIONS"]).write_text(exceptions if isinstance(exceptions, str) else json.dumps(exceptions))
             paths = []
             for i, report in enumerate(reports):
                 path = Path(directory) / f"lang{i}.sarif"
@@ -37,7 +43,7 @@ class CodeqlGateTest(unittest.TestCase):
                     path.write_text(report if isinstance(report, str) else json.dumps(report))
                 paths.append(path)
             before = [p.read_text() for p in paths if p.exists()]
-            result = subprocess.run([sys.executable, str(GATE), *map(str, paths)], capture_output=True, text=True)
+            result = subprocess.run([sys.executable, str(GATE), *map(str, paths)], capture_output=True, text=True, env=env)
             self.assertEqual([p.read_text() for p in paths if p.exists()], before, "Gate changed a report")
             return result
 
@@ -86,6 +92,34 @@ class CodeqlGateTest(unittest.TestCase):
         result = self.run_gate()
         self.assertEqual(result.returncode, 1, result.stdout)
 
+
+    def exception(self, **overrides):
+        until = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        return [{"id": "cq-001", "rule": "rule/0", "path": "src/App.java", "until": until,
+                 "owner": "brandon", "reason": "stateless bearer tokens", **overrides}]
+
+    def test_triaged_exception_reports_without_blocking(self):
+        result = self.run_gate(sarif("8.8"), exceptions=self.exception())
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("| lang0 | excepted (cq-001) | 1 |", result.stdout)
+
+    def test_expired_exception_blocks(self):
+        result = self.run_gate(sarif("8.8"), exceptions=self.exception(until="2020-01-01"))
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("| lang0 | high | 1 |", result.stdout)
+
+    def test_exception_only_covers_its_rule_and_file(self):
+        for overrides in [{"rule": "rule/9"}, {"path": "src/Other.java"}]:
+            with self.subTest(overrides=overrides):
+                result = self.run_gate(sarif("8.8"), exceptions=self.exception(**overrides))
+                self.assertEqual(result.returncode, 1, result.stdout)
+
+    def test_malformed_exceptions_file_blocks(self):
+        for bad in ["not json", [{"rule": "rule/0"}], {"rule": "rule/0"}]:
+            with self.subTest(bad=bad):
+                result = self.run_gate(sarif(), exceptions=bad)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("exceptions", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()
