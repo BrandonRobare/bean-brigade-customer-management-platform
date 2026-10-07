@@ -40,11 +40,6 @@
   <suppress until="2026-12-31Z">
     <notes>dc-006 accepted_risk: Spring MVC/SpEL feature present but not used (no XsltView or view rendering, SSE, functional routes, untrusted SpEL, WebDataBinder onto objects); no 6.2.x OSS fix, removed by Boot 4 / Spring 7. Owner: brandon</notes>
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring\-[a-z]+@6\.2\.19$</packageUrl>
-    <cve>CVE-2026-47884</cve>
-  </suppress>
-  <suppress until="2026-12-31Z">
-    <notes>dc-006 accepted_risk: Spring MVC/SpEL feature present but not used (no XsltView or view rendering, SSE, functional routes, untrusted SpEL, WebDataBinder onto objects); no 6.2.x OSS fix, removed by Boot 4 / Spring 7. Owner: brandon</notes>
-    <packageUrl regex="true">^pkg:maven/org\.springframework/spring\-[a-z]+@6\.2\.19$</packageUrl>
     <cve>CVE-2026-47886</cve>
   </suppress>
   <suppress until="2026-12-31Z">
