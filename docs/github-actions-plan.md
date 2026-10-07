@@ -46,7 +46,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 **Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
 GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
-successful `backend`, `scan` and `sast` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
+successful `frontend`, `backend`, `scan`, `sast` and `secrets` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
 its required-check setup remains separate work after confirming CI. Don't rename required job IDs or add path
 filters: a skipped required workflow can leave a PR waiting for its check.
 
@@ -66,8 +66,8 @@ set it to 1.
 | DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
 
 - **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
-  Dependency-Check and CodeQL have completed their initial triage and now fail CI; the planned npm audit and IaC
-  gates remain separate work.
+  Dependency-Check and CodeQL have completed their initial triage and now fail CI; `npm audit` runs report-only and the IaC
+  gate remains separate work.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
   `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
   in `backend/.trivyignore.yaml` carries the same three fields.

@@ -24,7 +24,6 @@ concurrency:
 env:
   NAMESPACE: student08
   KUBECONFIG: ${{ github.workspace }}/.kube/config
-  SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
 
 jobs:
   # --- promote: deploy the API/UI pair main already built for the tagged commit, then smoke ---
@@ -77,6 +76,7 @@ jobs:
       - name: Smoke
         id: smoke
         env:
+          SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
           SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
           SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
         run: bash scripts/smoke.sh
@@ -114,6 +114,7 @@ jobs:
       - name: Smoke
         id: smoke
         env:
+          SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
           SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
           SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
         run: bash scripts/smoke.sh

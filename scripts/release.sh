@@ -68,6 +68,7 @@ deploy() {
 
   current_api=$(image_of crm-api)
   current_ui=$(image_of crm-ui)
+  k delete job crm-kafka-topics --ignore-not-found > /dev/null
   if [[ "$current_api" == *@sha256:* && "$current_ui" == *@sha256:* ]]; then
     render "$current_api" "$current_ui" | k apply -f - > /dev/null
   else
