@@ -45,7 +45,6 @@ public class SecurityConfiguration {
   @Bean
   @Profile("dev & !prod")
   SecurityFilterChain development(HttpSecurity http) throws Exception {
-    // ponytail: retain the starter token only until the UI's real login is integrated.
     return http.csrf(csrf -> csrf.disable())
         .authorizeHttpRequests(auth -> auth.anyRequest().permitAll()).build();
   }
