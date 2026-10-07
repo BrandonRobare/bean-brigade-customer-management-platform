@@ -2,7 +2,7 @@
 
 These files target the supplied **k3s `student08` namespace**, not native OpenShift. The assignment's folder name is
 retained for traceability to Labs 48/51. Instructor acceptance of the platform substitution remains open.
-Steps 2–4 implement local runtime/container/manifests; GitHub publication, CD and live deployment are later steps.
+CI publishes the API/UI image pair and `capstone-cd.yml` deploys it; the first live release waits on platform inputs (R-02).
 
 ## What each piece does
 
@@ -44,8 +44,8 @@ TLS hosts, PVC templates and the ingress NetworkPolicy. DNS access currently ass
 confirm this and that the cluster's CNI enforces NetworkPolicies. These are configuration candidates, not verified
 platform facts. Never change a StatefulSet's storage class after its PVCs are established without a migration.
 
-Release API/UI images are intentionally `:release-required` markers. Steps 5–6 replace them with the verified
-CI-built digest pair. Never substitute a mutable release tag or invent a digest. PostgreSQL 16.15 and Apache
+Release API/UI images are intentionally `:release-required` markers. `scripts/release.sh` replaces them with the
+CI-built digest pair at deploy time. Never substitute a mutable release tag or invent a digest. PostgreSQL 16.15 and Apache
 Kafka 3.9.1 are pinned to multi-platform index digests resolved on 2026-10-06; both include Linux amd64. Scan and
 update these deliberately; local startup alone is not a clean image scan. nginx's base digest is in its Dockerfile.
 
@@ -112,8 +112,9 @@ kubectl --context student08 apply --dry-run=server --validate=strict -k openshif
 The first command renders files locally. The second asks the Kubernetes API to validate requests but does not
 save resources; it requires the authorized context. A successful dry run does **not** verify PVC binding, image
 pulls, DNS, NetworkPolicy enforcement, public TLS or a live customer journey. Do not apply the placeholder bundle.
-The eventual release pipeline is the deployment path; no actual deployment command is provided at this stage.
+`scripts/release.sh`, run by `capstone-cd.yml`, is the deployment path: it renders a temporary copy with the platform
+values and the release pair, then rolls the API and UI in order. See the [runbook](../docs/capstone-cicd-runbook.md#promote).
 
 Local evidence is recorded in [the Steps 2–4 report](../reports/deployment-foundation-2026-10-06.md).
-The full Actions/CD runbook and defense evidence are completed in Steps 5–7. Genuine Angular login/API calls,
+The Actions/CD steps are in the [runbook](../docs/capstone-cicd-runbook.md); defense evidence follows the first live release. Genuine Angular login/API calls,
 customer screens and Kafka producer/consumer integration remain application-lane prerequisites for live smoke.

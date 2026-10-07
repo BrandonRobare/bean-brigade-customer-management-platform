@@ -8,7 +8,11 @@ Not Bitbucket. The brief says OpenShift; see R-02 in `docs/risk-register.md`.
 ## Secret names only
 
 - `KUBECONFIG`: `production` environment secret, the `student08` kubeconfig
-- `ghcr-pull`: Kubernetes `docker-registry` Secret in `student08`, a token with `read:packages`
+- `CRM_DB_PASSWORD`, `CRM_AGENT_PASSWORD`, `CRM_ADMIN_PASSWORD`, `CRM_JWT_PRIVATE_KEY`, `CRM_JWT_PUBLIC_KEY`, and
+  optionally `CRM_TLS_CERT` / `CRM_TLS_KEY`: `production` environment secrets; CD writes them into `crm-db`, `crm-auth`,
+  `crm-jwt` and `crm-tls` without printing them
+- `PLATFORM_HOSTNAME`, `INGRESS_CLASS`, `STORAGE_CLASS`, `INGRESS_NAMESPACE`: `production` environment variables
+- `ghcr-pull`: Kubernetes `docker-registry` Secret in `student08`, a token with `read:packages`, made once by hand
 
 Never paste cluster credentials into this file.
 
@@ -92,12 +96,29 @@ Deploy by `@sha256:<digest>` only, never by tag.
 
 ## Promote
 
-Digest from CI → `kubectl set image` in `student08` (production only, no staging: R-01). TODO
+Push a `v*` tag on a commit whose `main` run is green (production only, no staging: R-01). `capstone-cd.yml` then:
+
+1. finds that commit's successful `main` CI run and downloads its `artifact-manifest.json`;
+2. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
+3. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
+   the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
+4. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
+   A pair becomes the rollback target only when its smoke passes.
+
+Gates, approvers and database rules: [release plan](release-plan.md) and [checklist](release-checklist.md).
 
 ## Smoke
 
-`CUS-1001` via the Ingress host + `lab-request-001`. TODO
+`scripts/smoke.sh` through the Ingress host, never `localhost`: trusted TLS, readiness, the UI, HTTP→HTTPS, anonymous
+401, wrong password 401, real login, AGENT metrics 403, ADMIN metrics 200, `CUS-1001` and `CUS-1002` reads, a
+`lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail. Until CAP-14 adds
+`GET /api/v1/customers/{id}`, the two customer reads fail, so a release can't pass smoke yet.
+
+```bash
+SMOKE_URL=https://<host> SMOKE_AGENT_PASSWORD=... SMOKE_ADMIN_PASSWORD=... bash scripts/smoke.sh
+```
 
 ## Rollback
 
-`kubectl rollout undo`. TODO
+Actions → Capstone CD → Run workflow → `rollback` restores the last known-good pair and reruns smoke. Triggers,
+authority, limits and rehearsal times: [rollback runbook](rollback-runbook.md).

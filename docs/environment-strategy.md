@@ -37,12 +37,12 @@ changes. Tags never move, and nothing is deployed as `:latest`.
 
 | Setting                                           | local                                       | ci                                      | production                               |
 |---------------------------------------------------|---------------------------------------------|-----------------------------------------|------------------------------------------|
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `.env` → compose PostgreSQL                 | workflow env, test-only values          | Secret `crm-db`                          |
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `.env` → compose PostgreSQL                 | workflow env, test-only values          | URL, user: ConfigMap `crm-api-config`; password: Secret `crm-db` |
 | Kafka bootstrap servers                           | `localhost:9092`                            | open (see the Actions plan)             | ConfigMap `crm-api-config`               |
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`               | `.env` → `file:.keys/...`                   | the `test` profile generates a key pair | Secret `crm-jwt`, mounted as files       |
-| `DEMO_AGENT_PASSWORD`, `DEMO_ADMIN_PASSWORD`      | `.env`                                      | test-only values                        | Secret `crm-demo-users`                  |
+| `DEMO_AGENT_PASSWORD`, `DEMO_ADMIN_PASSWORD`      | `.env`                                      | test-only values                        | Secret `crm-auth`                        |
 | CORS allowed origins                              | `http://localhost:4200`                     | not used                                | not used: one origin through the Ingress |
-| Spring profile                                    | `dev` (accepts `lab-demo-token` until 10/6) | `test`                                  | none                                     |
+| Spring profile                                    | `dev` (accepts `lab-demo-token` until 10/6) | `test`                                  | `prod`                                   |
 | Angular API base URL                              | `http://localhost:8080`                     | build only                              | relative, same origin as the UI          |
 
 **One Angular build for every environment.** `environment.ts` hardcodes `apiBaseUrl: 'http://localhost:8080'`, and
@@ -57,8 +57,9 @@ demo passwords. There are no fallback defaults.
 ## Where Config Lives
 
 - **Non-secret settings:** ConfigMap `crm-api-config` in `student08`, passed to the Deployment as env vars.
-- **Secrets:** Kubernetes Secrets `crm-db`, `crm-jwt` and `crm-demo-users`. The CD workflow creates them from GitHub
-  Environment secrets (proposed), so nobody creates them by hand. The Terraform / Ansible plan may take this over.
+- **Secrets:** Kubernetes Secrets `crm-db`, `crm-auth`, `crm-jwt` and, if we supply the certificate, `crm-tls`.
+  `scripts/release.sh secrets` writes them from the `production` environment secrets on every release, so nobody
+  creates them by hand. The Terraform / Ansible plan may take this over.
 - **Registry pull secret:** GHCR is private, so each Deployment lists `ghcr-pull` under `imagePullSecrets`: a
   `docker-registry` Secret holding a classic token with `read:packages` only. Brandon creates it once with
   `kubectl create secret docker-registry`; the token is never in Git (R-08).
@@ -70,9 +71,9 @@ demo passwords. There are no fallback defaults.
 - **Cluster credentials:** the instructor-issued `student08` kubeconfig, stored as the `production` environment secret
   `KUBECONFIG`. Its service account token doesn't expire (R-07).
 
-GitHub Pro gives a private repo environments, environment secrets and branch / tag rules, but not required reviewers or
-wait timers. So every deploy is started by hand, which is the course's manual approval (Lab 48): the release owner
-pushes the tag once the `main` run is green. That the approval isn't enforced by GitHub is R-04 in the risk register.
+Every deploy is started by hand, which is the course's manual approval (Lab 48): the release owner pushes the tag once
+the `main` run is green. The repo is public since 2026-10-07, so the `production` environment can also require a
+reviewer, which closes R-04 once it's set.
 Teammates only have their own namespaces; if they need to read pods and logs in `student08`, a read-only RoleBinding
 for their service account covers it, never write access.
 
