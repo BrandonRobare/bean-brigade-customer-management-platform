@@ -26,10 +26,10 @@ image_of() {
 }
 
 roll() {
-  k set image "deployment/crm-api" "api=$1" > /dev/null
-  k rollout status deployment/crm-api --timeout=300s
-  k set image "deployment/crm-ui" "ui=$2" > /dev/null
-  k rollout status deployment/crm-ui --timeout=180s
+  k set image deployment/crm-api "api=$1" > /dev/null &&
+    k rollout status deployment/crm-api --timeout=300s &&
+    k set image deployment/crm-ui "ui=$2" > /dev/null &&
+    k rollout status deployment/crm-ui --timeout=180s
 }
 
 render() {

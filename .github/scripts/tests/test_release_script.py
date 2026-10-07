@@ -12,26 +12,43 @@ API = {"repository": "ghcr.io/owner/crm-api", "digest": "sha256:" + "b" * 64}
 UI = {"repository": "ghcr.io/owner/crm-ui", "digest": "sha256:" + "c" * 64}
 
 
-class ReleaseRefusalTest(unittest.TestCase):
-    def deploy(self, manifest):
+FAILING_KUBECTL = """#!/bin/sh
+echo "$@" >> "{calls}"
+exit 1
+"""
+
+API_ROLLOUT_FAILS = """#!/bin/sh
+echo "$@" >> "{calls}"
+case "$*" in
+  *"rollout status deployment/crm-api"*) exit 1 ;;
+  *"get configmap"*|*"get deployment"*) exit 1 ;;
+esac
+exit 0
+"""
+
+
+class ReleaseScriptTest(unittest.TestCase):
+    def deploy(self, manifest, kubectl=FAILING_KUBECTL):
         with tempfile.TemporaryDirectory() as directory:
             calls = Path(directory) / "kubectl-calls"
             fake = Path(directory) / "kubectl"
-            fake.write_text(f'#!/bin/sh\necho "$@" >> "{calls}"\nexit 1\n')
+            fake.write_text(kubectl.format(calls=calls))
             fake.chmod(0o755)
             path = Path(directory) / "manifest.json"
             path.write_text(json.dumps(manifest))
             env = {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}",
                    "EXPECTED_COMMIT": COMMIT, "EXPECTED_REGISTRY": "ghcr.io/owner/"}
+            env.update({"PLATFORM_HOSTNAME": "crm.example", "INGRESS_CLASS": "traefik",
+                        "STORAGE_CLASS": "local-path", "INGRESS_NAMESPACE": "kube-system"})
             result = subprocess.run(["bash", "scripts/release.sh", "deploy", str(path)],
                                     cwd=REPO, capture_output=True, text=True, env=env)
-            return result, calls.exists()
+            return result, calls.read_text() if calls.exists() else ""
 
     def assert_refused(self, manifest, reason):
-        result, touched_cluster = self.deploy(manifest)
+        result, calls = self.deploy(manifest)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(reason, result.stderr)
-        self.assertFalse(touched_cluster, "kubectl ran before the manifest was accepted")
+        self.assertEqual(calls, "", "kubectl ran before the manifest was accepted")
 
     def test_manifest_without_the_pair_is_refused(self):
         self.assert_refused({"gitCommit": COMMIT, "imageDigest": API["digest"]}, "no images.api / images.ui pair")
@@ -50,8 +67,15 @@ class ReleaseRefusalTest(unittest.TestCase):
         self.assert_refused({"gitCommit": COMMIT, "images": {"api": api, "ui": UI}}, "is not in ghcr.io/owner/")
 
     def test_valid_manifest_reaches_the_cluster(self):
-        result, touched_cluster = self.deploy({"gitCommit": COMMIT, "images": {"api": API, "ui": UI}})
-        self.assertTrue(touched_cluster, result.stderr)
+        result, calls = self.deploy({"gitCommit": COMMIT, "images": {"api": API, "ui": UI}})
+        self.assertNotEqual(calls, "", result.stderr)
+
+    def test_failed_api_rollout_fails_the_release_and_leaves_the_ui_alone(self):
+        result, calls = self.deploy({"gitCommit": COMMIT, "images": {"api": API, "ui": UI}}, API_ROLLOUT_FAILS)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("Rollout failed", result.stderr)
+        self.assertIn("set image deployment/crm-api", calls)
+        self.assertNotIn("deployment/crm-ui", calls)
 
 
 if __name__ == "__main__":
