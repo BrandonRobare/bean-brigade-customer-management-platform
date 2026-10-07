@@ -85,7 +85,7 @@ On every run, `image` waits for `backend` and `sast` to succeed, then checks the
 `backend/.trivyignore.yaml` with a matching row in `docs/security-findings.csv`.
 
 On `main` only, it then pushes `ghcr.io/brandonrobare/crm-api:sha-<commit>` and writes `artifact-manifest.json`
-(version, commit, run ID, JAR checksum, image digest). The manifest and `trivy.json` are in the `image-report`
+(version, commit, run ID, JAR checksum, API and UI image digests). The manifest and `trivy-api.json` / `trivy-ui.json` are in the `image-report`
 artifact, and the run summary prints the digest.
 
 Deploy by `@sha256:<digest>` only, never by tag.
