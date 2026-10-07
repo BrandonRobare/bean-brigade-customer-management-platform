@@ -8,6 +8,7 @@
 | `/api/v1/customers/{id}` | GET | Retrieve a specific customer by ID | customer public_id | `Customer` | 200 OK |
 | `/api/v1/interactions` | GET | Retrieve interactions for a specific customer | `customerId` query parameter (public_id) | List of interactions | 200 OK |
 | `/api/v1/interactions` | POST | Create a new interaction for a specific customer | customer public_id and interaction request | Created interaction | 201 Created |
+| `/api/v1/auth/login` | POST | Production-profile sign-in | `username`, `password` | `accessToken`, `tokenType`, `expiresIn` | 200; wrong credentials 401 |
 
 As of 2026-10-06, interaction GET/POST are implemented; customer endpoints are planned.
 
@@ -90,7 +91,8 @@ an unknown profile ID returns 404. All fields below are required. The internal n
 ## Headers
 
 - `Content-Type: application/json` for request and success-response bodies.
-- `Authorization: Bearer <token>`: currently the training token; JWT/RBAC follows [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md).
+- `Authorization: Bearer <token>`: the `prod` profile validates RS256 JWTs as specified by
+  [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md). The fixed training token works only in the `dev` profile.
 - `X-Correlation-ID`: on POST, a nonblank header overrides body `correlationId`, then the fallback is `lab-request-001`.
   Header names are case-insensitive. Correlation values must fit the 64-character database column; DTO length validation is pending.
 
@@ -118,7 +120,7 @@ The target body is below; `status` matches the HTTP status and `correlationId` i
 |--------|---------|
 | 400 | Missing required parameter, invalid JSON or request validation failure |
 | 401 | Missing or invalid bearer token |
-| 403 | Authenticated user lacks the required role (planned with JWT/RBAC) |
+| 403 | Authenticated user lacks the required role (`prod` profile) |
 | 404 | Customer does not exist, for example `CUS-9999`; planned interaction mutations also use this for a missing interaction |
 | 409 | Planned: invalid lifecycle transition, stale version, or customer deletion blocked by interaction history |
 
