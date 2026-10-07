@@ -24,8 +24,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -55,8 +55,8 @@ jobs:
       SPRING_DATASOURCE_USERNAME: crm
       SPRING_DATASOURCE_PASSWORD: change-me
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: temurin
           java-version: "21"
@@ -70,7 +70,7 @@ jobs:
           echo "commit=${GITHUB_SHA}" >> SHA256SUMS
           echo "run=${GITHUB_RUN_NUMBER}" >> SHA256SUMS
           echo "version=$(mvn -B -q -f ../pom.xml help:evaluate -Dexpression=project.version -DforceStdout)" >> SHA256SUMS
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: crm-api-jar
           path: |
@@ -85,8 +85,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: temurin
           java-version: "21"
@@ -94,7 +94,7 @@ jobs:
       - name: NVD cache week
         id: nvd-week
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.dependency-check-data
           key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
@@ -124,50 +124,52 @@ jobs:
               echo "No report: the scan didn't finish. Check the Dependency-Check step log."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: dependency-check-report
           path: backend/target/dependency-check-report.*
           if-no-files-found: warn
 
-  # --- sast: Semgrep CE, java + typescript + owasp top 10 ---
+  # --- sast: CodeQL on java, typescript and the workflows; results in the Security tab, fails at high/critical ---
   sast:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v7
-      - run: pipx install semgrep==1.178.0
-      - name: Semgrep
-        run: semgrep scan --config p/java --config p/typescript --config p/owasp-top-ten --metrics=off --json --output semgrep.json
-      - name: Findings summary
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test CI scripts
+        run: python3 -B -m unittest discover -s .github/scripts/tests -v
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: java-kotlin, javascript-typescript, actions
+      - name: Build backend for CodeQL
+        working-directory: backend
+        run: mvn -B -ntp -DskipTests compile
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          output: codeql-results
+      - name: CodeQL gate
         if: always()
-        run: |
-          {
-            echo "### Semgrep"
-            if [ -f semgrep.json ]; then
-              echo "| Severity | Findings |"
-              echo "|---|---|"
-              jq -r '[.results[].extra.severity]
-                | if length == 0 then "| none | 0 |"
-                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' semgrep.json
-              echo
-              echo "Triage in \`docs/security-findings.csv\`. Full report in the \`semgrep-report\` artifact."
-            else
-              echo "No report: the scan didn't finish. Check the Semgrep step log."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+        run: python3 .github/scripts/check-codeql-sarif.py codeql-results/*.sarif >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: semgrep-report
-          path: semgrep.json
+          name: codeql-report
+          path: codeql-results/
           if-no-files-found: warn
 
   # --- secrets: gitleaks over the full git history ---
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - name: Install gitleaks
@@ -195,7 +197,7 @@ jobs:
               echo "No report: the scan didn't finish. Check the Gitleaks step log."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: gitleaks-report
@@ -204,14 +206,14 @@ jobs:
 
   # --- image: build from the verified JAR and Trivy scan on every run, push to GHCR on main only ---
   image:
-    needs: [backend]
+    needs: [backend, sast]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: crm-api-jar
           path: backend/target
@@ -234,7 +236,7 @@ jobs:
       - name: Trivy DB cache day
         id: trivy-day
         run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.trivy-day.outputs.day }}
@@ -289,7 +291,7 @@ jobs:
               echo "Fails at CRITICAL not triaged in \`backend/.trivyignore.yaml\`. Full report in the \`image-report\` artifact."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: image-report
