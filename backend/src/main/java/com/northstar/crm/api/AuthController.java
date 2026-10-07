@@ -15,6 +15,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +37,11 @@ public class AuthController {
   public record Login(@NotBlank @Size(max = 80) String username,
                       @NotBlank @Size(max = 256) String password) {}
   public record Token(String accessToken, String tokenType, int expiresIn) {}
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ResponseEntity<Void> invalidLogin() {
+    return ResponseEntity.badRequest().build();
+  }
 
   @PostMapping("/login")
   public ResponseEntity<Token> login(@Valid @RequestBody Login login) {

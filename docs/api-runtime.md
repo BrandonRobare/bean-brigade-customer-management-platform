@@ -18,6 +18,8 @@ and mount the same key pair in every API pod.
 not cacheable. Tokens contain `iss=bean-brigade-crm`, `sub`, `roles`, `iat` and `exp`. Production API and metrics
 requests require HTTPS. Behind Ingress, forwarded headers are trusted only because network access must be restricted
 to the trusted proxy; do not expose the ClusterIP or a NodePort directly. Health probes can use internal HTTP.
+Invalid login fields return a sanitized 400 without logging or returning the submitted password; wrong credentials
+return 401.
 
 | Endpoint | Access | Meaning |
 | --- | --- | --- |

@@ -1,5 +1,6 @@
 package com.northstar.crm.api;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -16,9 +17,12 @@ import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -85,6 +89,20 @@ class ProductionSecurityIT {
     http.perform(post("/api/v1/auth/login").secure(true).contentType(MediaType.APPLICATION_JSON)
             .content("{\"username\":\"\",\"password\":\"\"}"))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @ExtendWith(OutputCaptureExtension.class)
+  void invalidLoginNeverLogsOrReturnsSubmittedPassword(CapturedOutput output) throws Exception {
+    for (Credentials credentials : new Credentials[] {
+        new Credentials("agent1", "synthetic-private-marker-".repeat(15)),
+        new Credentials("x".repeat(81), "synthetic-private-marker")}) {
+      String response = http.perform(post("/api/v1/auth/login").secure(true)
+              .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(credentials)))
+          .andExpect(status().isBadRequest()).andReturn().getResponse().getContentAsString();
+      assertFalse(response.contains(credentials.password()), "Response must not disclose the password");
+      assertFalse(output.getAll().contains(credentials.password()), "Logs must not disclose the password");
+    }
   }
 
   @Test
