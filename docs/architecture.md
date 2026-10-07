@@ -5,9 +5,13 @@
 One vertical slice of a CRM for service agents:
 
 - **CAP-12:** record a customer interaction
+- edit interactions; ADMIN can delete an interaction
 - customer search and profile
 - sign-in with the roles AGENT and ADMIN
-- customer create and update (ADMIN)
+- customer create/update, lifecycle transitions and deletion without interaction history (ADMIN)
+
+The CRUD/lifecycle additions are planned in [the contract](contract.md#crud-and-lifecycle-scope) under
+[#82](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/82).
 
 Fixtures only: `CUS-1001` Amina Khan (ACTIVE), `CUS-1002` Ravi Singh (PROSPECT), `CUS-9999` (does not exist),
 correlation ID `lab-request-001`.
@@ -161,7 +165,9 @@ sequenceDiagram
 | `POST /api/v1/auth/login`                                          | public   | public |
 | `GET /api/v1/customers?query=`, `GET /api/v1/customers/{publicId}` | yes      | yes    |
 | `GET` / `POST /api/v1/interactions`                                | yes      | yes    |
-| `POST /api/v1/customers`, `PUT /api/v1/customers/{publicId}`       | no (403) | yes    |
+| `PATCH /api/v1/interactions/{id}` (planned)                         | yes      | yes    |
+| `DELETE /api/v1/interactions/{id}` (planned)                        | no (403) | yes    |
+| Customer create/update/status-change/delete (planned)              | no (403) | yes    |
 | `/actuator/health/liveness`, `/actuator/health/readiness`          | public   | public |
 | `/actuator/metrics`                                                | no (403) | yes    |
 
@@ -203,6 +209,7 @@ erDiagram
         varchar email UK "planned in V2"
         timestamptz created_at
         timestamptz updated_at "planned in V2"
+        bigint version "planned, optimistic locking"
     }
     CUSTOMER_INTERACTION {
         uuid interaction_id PK
@@ -211,6 +218,7 @@ erDiagram
         varchar summary "up to 1024 chars"
         varchar correlation_id
         timestamptz created_at
+        bigint version "planned, optimistic locking"
     }
     PROCESSED_EVENT {
         uuid event_id PK "planned, consumer dedupe"

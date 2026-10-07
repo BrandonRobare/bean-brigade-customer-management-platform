@@ -11,6 +11,61 @@
 
 As of 2026-10-06, interaction GET/POST are implemented; customer endpoints are planned.
 
+## CRUD and Lifecycle Scope
+
+[#82](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/82) adds customer
+create/update, status changes, customer deletion without interaction history, and interaction edit/delete to
+the planned slice. Acceptance criteria belong to CAP-12 and CAP-16 in [the backlog](backlog.md).
+These additions are not implemented. Bryan reviews the contract before the API and UI work starts.
+
+| Planned endpoint | Role | Request | Success |
+| --- | --- | --- | --- |
+| `POST /api/v1/customers` | ADMIN | `fullName` | 201, `Customer`, `Location: /api/v1/customers/{publicId}` |
+| `PUT /api/v1/customers/{publicId}` | ADMIN | `fullName`, `version` | 200, updated `Customer` |
+| `PATCH /api/v1/customers/{publicId}/status` | ADMIN | `status`, `version` | 200, updated `Customer` |
+| `DELETE /api/v1/customers/{publicId}?version={version}` | ADMIN | Current version in the query | 204, no body |
+| `PATCH /api/v1/interactions/{id}` | AGENT or ADMIN | `version`, plus `interactionType` and/or `summary` | 200, updated interaction |
+| `DELETE /api/v1/interactions/{id}?version={version}` | ADMIN | Current version in the query | 204, no body |
+
+### Customer Writes and Lifecycle
+
+- `fullName` is nonblank and at most 200 characters. Create generates a unique `CUS-` public ID, creation time
+  and initial status `PROSPECT`; clients do not supply IDs or timestamps. Existing seeds keep their current IDs.
+- A normal update changes the name and preserves the public ID, status and creation time. Status changes use
+  the status endpoint and are checked in the service within the same transaction as the write.
+- Allowed transitions: `PROSPECT → ACTIVE`, `PROSPECT → CLOSED`, `ACTIVE → CLOSED`. `CLOSED` is terminal.
+  A known but disallowed transition, including a same-status transition, returns 409 and changes nothing.
+  An unrecognized status returns 400. The capstone keeps its existing three statuses; `SUSPENDED` is not added.
+- Customer deletion is a hard delete only when no interactions reference the customer. Otherwise return 409
+  and preserve both customer and history. No cascade deletion of interactions; closing a customer also keeps
+  its history. A successful deletion removes the customer from search and subsequent profile reads return 404.
+
+### Interaction Edits and Deletes
+
+- An edit changes only type and/or summary. At least one must be supplied; omitted fields stay unchanged.
+  Supplied types use the existing enum; supplied summaries are nonblank and at most 1024 characters.
+  The ID, customer, creation time and original creation correlation ID remain unchanged.
+- ADMIN deletion removes only the selected interaction, never the customer or another interaction. Angular
+  asks for confirmation, waits for 204 and refetches the timeline. Cancellation sends no DELETE request.
+- These mutations do not emit `CustomerInteractionRecordedV1`; that event describes creation. No new event
+  types are added by this scope decision. Request logs still carry the mutation's `X-Correlation-ID` without
+  logging the note text.
+
+### Concurrency and Failures
+
+- Planned customer and interaction responses add `version`, a nonnegative integer backed by a new Flyway
+  migration and JPA optimistic locking. Current interaction GET/POST responses do not yet contain this field.
+  Update, status-change and delete requests must supply the version last read; successful updates increment it.
+- Check the version and perform the mutation atomically in the transaction. A stale version returns 409
+  without overwriting or deleting the newer row. Angular preserves edit values, shows the conflict and asks
+  the user to reload; it does not retry the write automatically.
+- Missing/invalid versions, invalid UUIDs or invalid DTO fields return 400. Unknown customer or interaction IDs
+  return 404. No/invalid JWT returns 401; a role outside the table returns 403. Failures change no rows.
+- New writes use `X-Correlation-ID` for logs and Problem Details. Supplied IDs must be nonblank and at most
+  64 characters; generate a request ID if absent. Existing POST header/body/fallback precedence below is unchanged.
+- UI success is checked by refetching and querying PostgreSQL, including after an API restart. A toast alone
+  does not prove persistence.
+
 ## Customer Response
 
 Search returns an array of `Customer` objects; profile returns one object. No search matches returns `[]`;
@@ -64,7 +119,8 @@ The target body is below; `status` matches the HTTP status and `correlationId` i
 | 400 | Missing required parameter, invalid JSON or request validation failure |
 | 401 | Missing or invalid bearer token |
 | 403 | Authenticated user lacks the required role (planned with JWT/RBAC) |
-| 404 | Customer does not exist, for example `CUS-9999` |
+| 404 | Customer does not exist, for example `CUS-9999`; planned interaction mutations also use this for a missing interaction |
+| 409 | Planned: invalid lifecycle transition, stale version, or customer deletion blocked by interaction history |
 
 ```json
 {
