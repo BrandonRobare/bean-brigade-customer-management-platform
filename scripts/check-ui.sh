@@ -13,7 +13,7 @@ container=$(docker run -d --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m \
   --user 101:101 --cap-drop ALL --security-opt no-new-privileges \
   -p 127.0.0.1::8080 crm-ui:check)
 base="http://$(docker port "$container" 8080/tcp)"
-curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 1 \
+curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 \
   "$base/healthz" > "$check_dir/health"
 grep -q '^ok$' "$check_dir/health"
 curl --fail --silent --show-error "$base/" > "$check_dir/index"
