@@ -15,7 +15,8 @@ each build lands is in [the environment strategy](environment-strategy.md).
 5. Secrets live in GitHub Environment secrets and OpenShift Secrets. Docs name them and never show values, and
    workflows never echo them.
 6. Test and scan reports are kept as run artifacts. The ones that prove a claim are copied to `reports/` with a row in
-   `defense/evidence-index.md`.
+   `defense/evidence-index.md`. For Dependency-Check (#55), keep JSON/HTML in run artifacts and link their runs without
+   committing the reports.
 7. A red `main` gets fixed before any new feature merges. A failing check is fixed, never skipped (`-DskipTests`,
    `@Disabled`, a lowered threshold).
 
@@ -34,7 +35,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
 | `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
 | `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | no                                 | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55); `npm audit --omit=dev --audit-level=high` (#52) and `trivy config` on `openshift/` and `infra/` (#57) remain planned                                    | fails CI; require `scan` in ruleset | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55); `npm audit --omit=dev --audit-level=high` (#52) and `trivy config` on `openshift/` and `infra/` (#57) remain planned                                    | yes: required `scan`               | Carter                    | `dependency-check-report` artifact + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | Semgrep CE 1.178.0 with `p/java`, `p/typescript` and `p/owasp-top-ten` over the whole repo (#53)                                                                                             | report-only until triage, then yes | Brandon                   | `semgrep-report` artifact + job summary; triage in `docs/security-findings.csv`                                  |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
@@ -43,11 +44,10 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
 | `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
 
-**Required checks:** as checked on 2026-10-07, the live `protect-main` ruleset requires only `secrets`. This workflow
-makes Dependency-Check fail `scan` at CVSS 7 or on scanner errors, and `image` requires successful `backend` and `scan`
-jobs. Add `scan` to the ruleset's required status checks, sourced from GitHub Actions, to block merging too. Keep
-`secrets` required; `sast` joins separately once its findings are triaged. Don't rename required job IDs or add path
-filters: a skipped required workflow can leave a PR waiting for its check.
+**Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
+GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
+successful `backend` and `scan` jobs. `sast` joins separately once its findings are triaged. Don't rename required job
+IDs or add path filters: a skipped required workflow can leave a PR waiting for its check.
 
 **Branch rules (`protect-main`):** PR required, 1 approval from someone other than the author, stale approvals
 dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals;
@@ -57,7 +57,7 @@ set it to 1.
 
 | Scan         | Tool                                                     | When                                 | Fails at      | Status                                                                          |
 |--------------|----------------------------------------------------------|--------------------------------------|---------------|---------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check fails CI (#55); require `scan` in ruleset; `npm audit` planned (#52), Carter |
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` planned (#52), Carter |
 | SAST         | Semgrep CE (`p/java`, `p/typescript`, `p/owasp-top-ten`) | PR, `main`                           | ERROR         | report-only (#53), Brandon; CodeQL needs GitHub Code Security on a private repo |
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
 | IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | planned (#57), Brandon                                                          |
@@ -83,8 +83,15 @@ set it to 1.
   (`dc-001` to `dc-007`). Suppressions match the product's jars at that exact version, so an upgrade brings them back
   for review. The [2026-10-07 main scan](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37645992051/job/112876759213)
   returned `BUILD SUCCESS` and uploaded JSON/HTML reports. Removing `continue-on-error` enforces the Maven result;
-  summaries and reports still run with `if: always()`, including on failure. Before #55 closes, verify a clean PR,
-  an unsuppressed CVSS >=7 failure that blocks merging and skips `image`, and a successful `main` run after merge.
+  summaries and reports still run with `if: always()`, including on failure.
+- **Dependency-Check gate proof (2026-10-07):** the [PR #97 run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37670455515)
+  passed `scan` and `image`. Removing only the CVE-2026-47884 suppression in temporary PR #98 made its
+  [run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37671633077) fail
+  `scan` on `spring-core-6.2.19.jar` at CVSS 9.8. `image` was skipped; the findings summary and JSON/HTML report upload
+  succeeded. GitHub reported the open, non-draft PR as blocked while required `scan` failed and required `secrets`
+  passed. [PR #98](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/pull/98) records that
+  evidence and was closed without merging; its test branch was deleted. Before #55 closes, verify a successful
+  `main` scan and image job after merging #97 and add that run to `defense/evidence-index.md`.
 - **First Semgrep run:** 0 findings in the Java and TypeScript code. `p/owasp-top-ten` also scans workflow
   YAML and found 13: a shell injection in `capstone-cd.yml` (`sg-001`) and 12 actions pinned to a tag instead of a
   commit SHA (`sg-002`). None of the three packs flags a disabled CSRF (`csrf(c -> c.disable())`), so that stays a
@@ -142,7 +149,7 @@ with `read:packages`) in each project. Moving to the OpenShift registry or ECR l
 ## Order
 
 1. Real `frontend` and `backend` jobs (#39) for CP1. They go green once `InteractionService` merges.
-2. Dependency-Check (#55) fails CI and gates `image`; require `scan` in the ruleset. Add and triage the remaining scans separately (#52, #53, #57).
+2. Dependency-Check (#55) blocks CI, merging and image publication; confirm the post-merge `main` run. Add and triage the remaining scans separately (#52, #53, #57).
 3. `iac-check` alongside the first Terraform / Ansible files.
 4. `image` with its digest and Trivy scan, and the first trivial staging deploy (manual `promote`) as soon as `oc`
    access exists.
