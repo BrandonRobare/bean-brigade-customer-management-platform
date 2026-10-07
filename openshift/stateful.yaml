@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-postgres
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: crm-postgres}
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: crm-postgres
+spec:
+  serviceName: crm-postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: crm-postgres}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: crm-postgres}
+    spec:
+      serviceAccountName: crm-runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
+          ports: [{name: postgres, containerPort: 5432}]
+          env:
+            - {name: POSTGRES_DB, value: crm}
+            - {name: POSTGRES_USER, value: crm}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: crm-db, key: password}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          startupProbe:
+            exec:
+              command: [pg_isready, -h, "127.0.0.1", -U, crm, -d, crm, -t, "1"]
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            exec:
+              command: [pg_isready, -h, "127.0.0.1", -U, crm, -d, crm, -t, "1"]
+            timeoutSeconds: 2
+          livenessProbe:
+            tcpSocket: {port: postgres}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: socket, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: socket
+          emptyDir: {sizeLimit: 16Mi}
+        - name: tmp
+          emptyDir: {sizeLimit: 32Mi}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        storageClassName: platform-class-required
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-kafka-headless
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: crm-kafka}
+  ports:
+    - {name: broker, port: 9092, targetPort: broker}
+    - {name: controller, port: 9093, targetPort: controller}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-kafka
+spec:
+  selector: {app.kubernetes.io/name: crm-kafka}
+  ports: [{name: broker, port: 9092, targetPort: broker}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: crm-kafka
+spec:
+  serviceName: crm-kafka-headless
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: crm-kafka}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: crm-kafka}
+    spec:
+      serviceAccountName: crm-runtime
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: kafka
+          image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
+          ports:
+            - {name: broker, containerPort: 9092}
+            - {name: controller, containerPort: 9093}
+          envFrom:
+            - configMapRef: {name: crm-kafka-config}
+          resources:
+            requests: {cpu: 500m, memory: 768Mi}
+            limits: {cpu: 1000m, memory: 1536Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The upstream entrypoint writes /opt/kafka/config; retain its supported writable root.
+            readOnlyRootFilesystem: false
+            capabilities: {drop: [ALL]}
+          startupProbe:
+            tcpSocket: {port: broker}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -ec
+                - KAFKA_HEAP_OPTS='-Xms32m -Xmx128m' /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null
+            periodSeconds: 15
+            timeoutSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: broker}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/kafka/data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 128Mi}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        storageClassName: platform-class-required
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}

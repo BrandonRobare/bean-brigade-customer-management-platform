@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crm-runtime
+automountServiceAccountToken: false
+imagePullSecrets:
+  - name: ghcr-pull
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-platform
+data:
+  # These are safe placeholders, not confirmed platform settings.
+  hostname: demo.example.invalid
+  ingress-class: platform-class-required
+  storage-class: platform-class-required
+  ingress-namespace: platform-ingress-namespace-required
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-api-config
+data:
+  SPRING_PROFILES_ACTIVE: prod
+  SPRING_DATASOURCE_URL: jdbc:postgresql://crm-postgres:5432/crm
+  SPRING_DATASOURCE_USERNAME: crm
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: crm-kafka:9092
+  JWT_PRIVATE_KEY: file:/var/run/secrets/jwt/jwt-private.pem
+  JWT_PUBLIC_KEY: file:/var/run/secrets/jwt/jwt-public.pem
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-kafka-config
+data:
+  # Preserve this identity with the Kafka PVC; never regenerate it on a release.
+  CLUSTER_ID: 4VxHqUHeSdmLwa9PnYe94Q
+  KAFKA_NODE_ID: "1"
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+  KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://crm-kafka:9092
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@crm-kafka-0.crm-kafka-headless:9093
+  KAFKA_LOG_DIRS: /var/lib/kafka/data/logs
+  KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+  KAFKA_MIN_INSYNC_REPLICAS: "1"
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  # ponytail: 24-hour synthetic event retention; increase disk/retention for retained business data.
+  KAFKA_LOG_RETENTION_HOURS: "24"
+  KAFKA_LOG_RETENTION_BYTES: "134217728"
