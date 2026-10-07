@@ -79,6 +79,8 @@ class ProductionSecurityIT {
         .andExpect(status().isForbidden());
     http.perform(get("/actuator/env").secure(true).header("Authorization", "Bearer " + admin))
         .andExpect(status().isForbidden());
+    http.perform(get("/actuator/heapdump").secure(true).header("Authorization", "Bearer " + admin))
+        .andExpect(status().isForbidden());
   }
 
   @Test
