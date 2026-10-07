@@ -52,6 +52,5 @@ data:
   KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
   KAFKA_MIN_INSYNC_REPLICAS: "1"
   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-  # ponytail: 24-hour synthetic event retention; increase disk/retention for retained business data.
   KAFKA_LOG_RETENTION_HOURS: "24"
   KAFKA_LOG_RETENTION_BYTES: "134217728"
