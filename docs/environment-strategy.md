@@ -60,9 +60,9 @@ demo passwords. There are no fallback defaults.
 - **Secrets:** Kubernetes Secrets `crm-db`, `crm-auth`, `crm-jwt` and, if we supply the certificate, `crm-tls`.
   `scripts/release.sh secrets` writes them from the `production` environment secrets on every release, so nobody
   creates them by hand. The Terraform / Ansible plan may take this over.
-- **Registry pull secret:** GHCR is private, so each Deployment lists `ghcr-pull` under `imagePullSecrets`: a
-  `docker-registry` Secret holding a classic token with `read:packages` only. Brandon creates it once with
-  `kubectl create secret docker-registry`; the token is never in Git (R-08).
+- **Images:** both GHCR packages (`crm-api`, `crm-ui`) are public since 2026-10-07, so pods pull them without
+  credentials and there's no pull secret to create, rotate or let expire (R-12 closed). The images hold no secrets:
+  passwords and keys come from Kubernetes Secrets at runtime.
 
 ## Access and Approvals
 

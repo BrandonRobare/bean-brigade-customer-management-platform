@@ -243,7 +243,7 @@ flowchart LR
     pr["PR to main"] --> ci["CI<br/>frontend: npm ci, tests, ng build<br/>backend: mvn verify on PostgreSQL<br/>scan: Dependency-Check, npm audit, Semgrep"]
     ci --> merge["review + squash merge"]
     merge --> img["build image once<br/>record sha256 digest"]
-    img --> reg["GHCR, private"]
+    img --> reg["GHCR, public"]
     reg --> tag["tag v*"]
     tag --> cd["CD: deploy the digest<br/>to student08 (k3s)"]
     cd --> smoke["smoke through the Ingress:<br/>readiness, then CUS-1001"]

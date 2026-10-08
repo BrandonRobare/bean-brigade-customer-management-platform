@@ -12,7 +12,6 @@ Not Bitbucket. The brief says OpenShift; see R-02 in `docs/risk-register.md`.
   optionally `CRM_TLS_CERT` / `CRM_TLS_KEY`: `production` environment secrets; CD writes them into `crm-db`, `crm-auth`,
   `crm-jwt` and `crm-tls` without printing them
 - `PLATFORM_HOSTNAME`, `INGRESS_CLASS`, `STORAGE_CLASS`, `INGRESS_NAMESPACE`: `production` environment variables
-- `ghcr-pull`: Kubernetes `docker-registry` Secret in `student08`, a token with `read:packages`, made once by hand
 
 Never paste cluster credentials into this file.
 
@@ -117,6 +116,35 @@ Gates, approvers and database rules: [release plan](release-plan.md) and [checkl
 ```bash
 SMOKE_URL=https://<host> SMOKE_AGENT_PASSWORD=... SMOKE_ADMIN_PASSWORD=... bash scripts/smoke.sh
 ```
+
+## TLS certificate
+
+The Ingress serves the certificate in Secret `crm-tls`. k3s gives us no certificate of its own (Traefik's default is
+self-signed), so we hold a free Let's Encrypt certificate for `PLATFORM_HOSTNAME`, issued 2026-10-08 and **valid until
+2027-01-06. Renew it by mid-December 2026.** CD never overwrites `crm-tls`: `release.sh secrets` only writes it when the
+`CRM_TLS_CERT` / `CRM_TLS_KEY` environment secrets are set, and they aren't.
+
+It was issued with an HTTP-01 challenge from inside `student08`, without cluster-admin. To renew, repeat it:
+
+1. Apply a temporary Service `acme-challenge` (port 8080) and an Ingress on the `web` entrypoint that routes only
+   `http://<PLATFORM_HOSTNAME>/.well-known/acme-challenge` to it. That path is longer than `crm-http`'s `/`, so Traefik
+   picks it first.
+2. Run a pod labeled for that Service with two containers sharing an `emptyDir` at `/data`: `goacme/lego` (pinned by
+   digest, non-root) with
+   `run --accept-tos --server letsencrypt-staging --path /data --domains <PLATFORM_HOSTNAME> --http --http.address :8080 --http.delay 20s`,
+   and a `busybox` container that just sleeps, so the files can be copied out after lego exits.
+   Without `--http.delay`, Let's Encrypt checks before Traefik has registered the pod and gets a 503.
+3. When staging succeeds, delete the pod and run it again with `--server letsencrypt`.
+4. Copy `certificates/<host>.crt` and `.key` out of the busybox container into a private temp directory, check that the
+   key matches the certificate, then
+   `kubectl -n student08 create secret tls crm-tls --cert=... --key=... --dry-run=client -o yaml | kubectl apply -f -`.
+   Traefik switches over without a restart. Delete the local copies.
+5. Delete the pod, Service and Ingress, and check `curl https://<PLATFORM_HOSTNAME>/actuator/health/readiness` without
+   `-k`.
+
+Renewing needs Let's Encrypt's Subscriber Agreement accepted by the release owner. `sslip.io` isn't on the Public Suffix
+List, so its users share one Let's Encrypt rate limit; if issuance is refused, retry later or switch hostname. If the
+instructor installs cert-manager, move to it instead, since it renews automatically.
 
 ## Rollback
 

@@ -151,9 +151,8 @@ evidence of `sg-001`/`sg-002`. Leave GitHub's code scanning *default setup* off:
 workflow. Source: [CodeQL action](https://github.com/github/codeql-action), [SARIF security-severity](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning).
 
 **Registry:** GHCR (#49). The `image` job pushes with the built-in `GITHUB_TOKEN` (`packages: write` on that job only),
-so there's no registry secret in GitHub. The package is private like the repo, so the cluster pulls it with the
-`ghcr-pull` Secret (a classic token with `read:packages`) in `student08` (R-08). Moving to another registry later changes
-only the push step and that Secret.
+so there's no registry secret in GitHub. Both packages are public, like the repo, so the cluster pulls them without
+credentials. Moving to a private registry later means adding a pull secret back to the `crm-runtime` ServiceAccount.
 
 ## Open
 
