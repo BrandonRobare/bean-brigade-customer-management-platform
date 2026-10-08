@@ -23,7 +23,7 @@ deployment occurred. The original checkout remains on `main`. Infrastructure val
 | `bash scripts/check-ui.sh` | Real non-root/read-only UI container serves health and deep links, rejects API/static-file fallback and redirects forwarded HTTP to HTTPS |
 | Angular dev proxy | Real development server forwards readiness JSON and authenticated interaction GET to the local API |
 | Packaged API runtime | Real non-root/read-only container reads root-owned, group-readable mounted keys; forwarded HTTPS login and AGENT/ADMIN metrics checks pass |
-| `kubectl kustomize openshift` | Successful render; changing only source platform settings propagates to Ingress, TLS, PVC classes and policy namespace |
+| `kubectl kustomize k8s` | Successful render; changing only source platform settings propagates to Ingress, TLS, PVC classes and policy namespace |
 | Strict Kubernetes server dry run | All 23 resources accepted; no resources persisted |
 | Resource budget | Steady: requests 1350m / 1920 MiB, limits 2750m / 3840 MiB. API surge + topic Job: requests 1950m / 2816 MiB, limits 4000m / 5632 MiB; within checked quota |
 | PostgreSQL image/configuration | Non-root/read-only startup and configured readiness pass; an inserted synthetic row survives restart |
@@ -47,7 +47,6 @@ volumes, networks and generated keys were removed. Final namespace inspection re
 
 ## Still pending
 
-- Instructor confirmation of k3s as the OpenShift assignment substitution.
 - Approved public hostname, trusted certificate, StorageClass, IngressClass, controller namespace/entrypoints,
   DNS namespace and NetworkPolicy enforcement. Placeholders remain explicit; the bundle is not ready to apply.
 - Verified API/UI CI digest pair, scans/gates, GitHub push/review, CD, public smoke and rollback rehearsal (Steps 5–8).
@@ -55,7 +54,7 @@ volumes, networks and generated keys were removed. Final namespace inspection re
   and manual CLI records are infrastructure evidence, not evidence that the application publishes/consumes events.
 - Existing frontend dependency findings: Step 1 reported 32 high and 4 critical; triage belongs to Step 5.
 - Full runbook/defense reconciliation in Step 7. This report does not establish a public release, trusted live TLS,
-  OpenShift SCC compatibility, backup, replication or high availability.
+  backup, replication or high availability.
 
 See [API runtime](../docs/api-runtime.md), [UI ADR 0007](../docs/adrs/0007-serve-the-ui-from-its-own-nginx-image.md)
-and [Kubernetes walkthrough](../openshift/README.md) for implementation and safe verification commands.
+and [Kubernetes walkthrough](../k8s/README.md) for implementation and safe verification commands.

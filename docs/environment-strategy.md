@@ -15,7 +15,7 @@ are in [the GitHub Actions plan](github-actions-plan.md).
 Lab 48 names four environments: dev, test, stage and prod-like. Ours map to them as dev = local, test = ci,
 prod-like = `student08`. Stage is skipped.
 
-**One namespace.** The course cluster is k3s, not OpenShift, and each of us gets one namespace with a service account
+**One namespace.** The course cluster is k3s, and each of us gets one namespace with a service account
 token. Production uses Brandon's, `student08`; we can't create others. Staging and production don't share it: Lab 48
 warns against one project for every environment, and the two would share a quota and a token. So staging is skipped,
 and the gap is R-01 in the [risk register](risk-register.md). If Adel gives us a second namespace, staging comes back
@@ -79,10 +79,9 @@ for their service account covers it, never write access.
 
 ## Cluster Constraints
 
-- **k3s, not OpenShift.** No Routes or Projects: plain Deployments, Services and one Ingress (Traefik), driven with
-  `kubectl`. The manifests still live in `openshift/`, the brief's folder name (R-02).
-- **Non-root images.** k3s doesn't force a random UID the way OpenShift does, but the images still run as a non-root
-  numeric user and the manifests don't set `runAsUser`, so they'd run on OpenShift unchanged.
+- **k3s.** Plain Deployments, Services and one Ingress (Traefik), driven with `kubectl`; Adel confirmed k3s on
+  2026-10-08 (R-02). The manifests live in `k8s/`.
+- **Non-root images.** The images run as a non-root numeric user and the manifests don't set `runAsUser`.
 - **Quota:** 15 pods, 2 CPU and 3Gi of requests, 4 CPU and 6Gi of limits. A container without its own gets 250m /
   256Mi requested and a 500m / 512Mi limit, so every container sets its own, and a rolling update needs room for one
   extra pod (R-06).

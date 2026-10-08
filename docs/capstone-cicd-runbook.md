@@ -3,7 +3,7 @@
 ## Stack
 
 Angular + Spring Boot + PostgreSQL + GitHub Actions → the course's k3s cluster, namespace `student08` (`kubectl`).  
-Not Bitbucket. The brief says OpenShift; see R-02 in `docs/risk-register.md`.
+Not Bitbucket. Adel confirmed k3s for the deploy on 2026-10-08 (R-02 in `docs/risk-register.md`).
 
 ## Secret names only
 
@@ -26,7 +26,7 @@ a GitHub settings step after CI verification.
   specs.
 - Maven (`backend`): Java 21, `mvn -B -ntp clean verify` against a `postgres:16` service (db `crm`, the same throwaway
   values as `compose.yaml`). Never `-DskipTests`.
-- IaC (`iac`): Trivy config on `openshift/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
+- IaC (`iac`): Trivy config on `k8s/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
   `ansible-lint`. Applying is a separate CD job ([Infrastructure](#infrastructure)).
 
 Same checks locally, before pushing:

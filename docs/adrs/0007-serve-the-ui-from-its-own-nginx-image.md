@@ -12,7 +12,7 @@ own hosts, to achieve one origin and separate UI and API releases, accepting a s
 
 `environment.ts` hardcodes `apiBaseUrl: 'http://localhost:8080'`, so a production build would call the agent's own
 laptop. The environment strategy fixes that with a relative API URL and the UI and API on one origin, but left open
-how the UI is served. The course cluster is k3s, so routing is an Ingress (Traefik), not an OpenShift Route. How does
+how the UI is served. The course cluster is k3s, so routing is an Ingress (Traefik). How does
 the Angular build reach the browser in the cluster?
 
 ## Decision Drivers
