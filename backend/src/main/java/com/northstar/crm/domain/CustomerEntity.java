@@ -27,7 +27,7 @@ public class CustomerEntity {
   private String status;
 
   @Column(name = "created_at", nullable = false)
-  private final Instant createdAt = Instant.now();
+  private Instant createdAt = Instant.now();
 
   public Long getId() {
     return id;
@@ -45,5 +45,7 @@ public class CustomerEntity {
     return status;
   }
 
-  public Instant getCreatedAt() { return createdAt; }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 }
