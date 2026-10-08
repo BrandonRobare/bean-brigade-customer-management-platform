@@ -9,12 +9,12 @@ pipeline stops what it should. The two red CI runs come from draft [PR #126](htt
 | L51-2 | Deploy rebuilds the JAR | Design + tests | CD has no Maven; it deploys only the digests in the tagged commit's `main` manifest | done |
 | L51-3 | Skip environment approval | Approval records + environment rules | `production` needs Brandon's approval, and only `main` and `v*` can deploy | done |
 | L44-1 | Promote a wrong digest | Release script tests | `release.sh deploy` refuses another commit's manifest, a tag instead of a digest, and images outside GHCR | done |
-| L44-2 | Tabletop NO-GO | Talk-through with Bryan | Release checklist automatic NO-GO | pending (needs Bryan) |
+| L44-2 | Tabletop NO-GO | - | - | skipped (practice step) |
 | L44-3 | Roll back to the prior digest | Live on `student08` | 1 min 24 s to smoke 12/12 | done, see [release v0.1.1 report](release-v0.1.1-2026-10-08.md) |
 | L44-4 | Use `:latest` once | Release script tests | Refused: not a digest; CI never pushes `latest` | done |
 | L44-5 | Skip smoke | Workflow review | Smoke has no skip input; a pair only becomes known-good when it passes | done |
 | SAST | SQL injection reaches the gate | CodeQL CLI locally, same version and suite as CI | `java/sql-injection` high (8.8): `sast` red, `image` skipped, merge blocked | done: local + [run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916) |
-| L44-9 | Peer dry-run of the rollback runbook | Teammate reads it cold | - | pending (needs Bryan or Chad) |
+| L44-9 | Peer dry-run of the rollback runbook | - | - | skipped (practice step) |
 
 ## L51-1: failing-test drill
 
@@ -84,18 +84,8 @@ and the PR showed `BLOCKED`. The Security tab raised alert #4 (`java/sql-injecti
 `CustomerLookupDrill.java:20`) on the PR only; it cleared when the next commit removed the endpoint ([run 37834456992](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834456992), green), and
 `main` never had it.
 
-## L44-2: NO-GO tabletop (to do with Bryan)
+## Skipped
 
-Scenario: v0.1.3 includes a Flyway migration that renames `customer.full_name`, which v0.1.2 still reads. Walk the
-[release checklist](../docs/release-checklist.md) and record:
-
-- Check 4 (Migrations): FAIL, the previous image can't run on the new schema. This is an automatic NO-GO.
-- Decision: NO-GO. Owner: Brandon (release), Bryan (data). Timestamp:
-- What makes it GO: expand then contract. Add the new column and write both, release, then drop the old one in a
-  later release once nothing reads it.
-
-## L44-9: peer dry-run (to do with Bryan or Chad)
-
-They read [`docs/rollback-runbook.md`](../docs/rollback-runbook.md) cold and talk through each step without running
-it. Note every question they had to ask (those are gaps to fix), the time taken, and add a row to the runbook's
-Rehearsals table.
+L44-2 (NO-GO tabletop) and L44-9 (peer dry-run of the rollback runbook) are Lab 44 practice steps, not capstone
+requirements, and were skipped on 2026-10-08. The automatic NO-GO rules are in the
+[release checklist](../docs/release-checklist.md), and rollback was rehearsed live (L44-3).
