@@ -138,7 +138,8 @@ an nginx edge that routes like the Ingress. Then:
   `reason`, `until`), with a matching row in `docs/security-findings.csv`. Medium and lower show in the summary.
 
 Probes, `zap.json`, `zap.html` and the ZAP log are in the `dast-report` artifact. A failure means no push, so CD has
-nothing to promote. Kafka isn't started: the API doesn't publish yet (#30), so the event path isn't covered.
+nothing to promote. Kafka isn't started and no probe records an interaction, so event publishing (#125) isn't
+covered by DAST. `InteractionEventPublisherIT` tests it in `backend` with a mocked `KafkaTemplate`, not a real broker.
 
 ```bash
 API_IMAGE=crm-api:local UI_IMAGE=crm-ui:local bash scripts/dast.sh && python3 .github/scripts/check-zap-report.py
