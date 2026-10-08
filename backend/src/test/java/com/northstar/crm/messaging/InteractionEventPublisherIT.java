@@ -27,6 +27,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -34,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 
 @SpringBootTest
+@ActiveProfiles("test")
 class InteractionEventPublisherIT {
 
     @DynamicPropertySource

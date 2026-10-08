@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -43,23 +44,17 @@ public class SecurityConfiguration {
   public static final String ISSUER = "bean-brigade-crm";
 
   @Bean
-  @Profile("dev & !prod")
-  SecurityFilterChain development(HttpSecurity http) throws Exception {
-    return http.csrf(csrf -> csrf.disable())
-        .authorizeHttpRequests(auth -> auth.anyRequest().permitAll()).build();
-  }
-
-  @Bean
-  @Profile("prod")
-  SecurityFilterChain production(HttpSecurity http) throws Exception {
+  SecurityFilterChain api(HttpSecurity http, Environment environment) throws Exception {
     JwtGrantedAuthoritiesConverter roles = new JwtGrantedAuthoritiesConverter();
     roles.setAuthoritiesClaimName("roles");
     roles.setAuthorityPrefix("ROLE_");
     JwtAuthenticationConverter authentication = new JwtAuthenticationConverter();
     authentication.setJwtGrantedAuthoritiesConverter(roles);
+    if (environment.matchesProfiles("prod")) {
+      http.requiresChannel(channel -> channel.requestMatchers("/api/**", "/actuator/metrics/**").requiresSecure());
+    }
     return http.csrf(csrf -> csrf.disable())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .requiresChannel(channel -> channel.requestMatchers("/api/**", "/actuator/metrics/**").requiresSecure())
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
             .requestMatchers("/actuator/health", "/actuator/health/**", "/error").permitAll()
@@ -76,7 +71,7 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  @Profile("prod")
+  @Profile("!test")
   KeyPair signingKeys(@Value("${crm.security.jwt-private-key}") String privateValue,
       @Value("${crm.security.jwt-public-key}") String publicValue, ResourceLoader resources) throws IOException {
     try (InputStream privateInput = keyInput(privateValue, resources);
@@ -99,7 +94,6 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  @Profile("prod")
   JwtEncoder jwtEncoder(KeyPair keys) {
     RSAKey rsa = new RSAKey.Builder((RSAPublicKey) keys.getPublic())
         .privateKey(keys.getPrivate()).build();
@@ -107,7 +101,6 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  @Profile("prod")
   JwtDecoder jwtDecoder(KeyPair keys) {
     NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) keys.getPublic()).build();
     decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
@@ -115,13 +108,11 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  @Profile("prod")
   PasswordEncoder passwords() {
     return new BCryptPasswordEncoder();
   }
 
   @Bean
-  @Profile("prod")
   InMemoryUserDetailsManager users(PasswordEncoder passwords,
       @Value("${crm.security.agent-password}") String agentPassword,
       @Value("${crm.security.admin-password}") String adminPassword) {
@@ -133,7 +124,6 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  @Profile("prod")
   AuthenticationManager authenticationManager(InMemoryUserDetailsManager users, PasswordEncoder passwords) {
     DaoAuthenticationProvider provider = new DaoAuthenticationProvider(users);
     provider.setPasswordEncoder(passwords);

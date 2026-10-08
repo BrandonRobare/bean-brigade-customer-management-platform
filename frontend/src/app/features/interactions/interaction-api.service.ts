@@ -10,13 +10,13 @@ export class InteractionApiService {
   private readonly base = `${environment.apiBaseUrl}/api/v1/interactions`;
 
   list(customerId: string): Observable<Interaction[]> {
-    // TODO: GET this.base with query param customerId via HttpClient
+    // DONE: GET this.base with query param customerId via HttpClient
     const params = new HttpParams().set('customerId', customerId);
     return this.http.get<Interaction[]>(this.base, { params });
   }
 
   create(body: CreateInteractionRequest): Observable<Interaction> {
-    // TODO: POST this.base with JSON body
+    // DONE: POST this.base with JSON body
     return this.http.post<Interaction>(this.base, body);
   }
 }

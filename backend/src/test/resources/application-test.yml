@@ -1,0 +1,4 @@
+crm:
+  security:
+    agent-password: test-only-agent
+    admin-password: test-only-admin

@@ -8,7 +8,7 @@ Angular → REST (JWT) → Spring Boot → PostgreSQL. Not React / Oracle / k3s.
 
 - Customer: `CUS-1001`
 - Correlation: `lab-request-001`
-- Mock login token: `lab-demo-token` (memory only)
+- Sign in: `agent1` or `admin1`, passwords from `.env`; the JWT stays in memory only
 
 ## Failure path
 
