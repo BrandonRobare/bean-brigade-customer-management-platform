@@ -10,7 +10,8 @@
 | `/api/v1/interactions` | POST | Create a new interaction for a specific customer | customer public_id and interaction request | Created interaction | 201 Created |
 | `/api/v1/auth/login` | POST | Production-profile sign-in | `username`, `password` | `accessToken`, `tokenType`, `expiresIn` | 200; wrong credentials 401 |
 
-As of 2026-10-06, interaction GET/POST are implemented; customer endpoints are planned.
+As of 2026-10-08, interaction GET/POST and customer search/profile GET are implemented. Search matches part of the
+name or the exact public ID, ignoring case; an empty or missing `query` returns every customer.
 
 ## CRUD and Lifecycle Scope
 
