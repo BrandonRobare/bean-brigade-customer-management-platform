@@ -142,8 +142,8 @@ and the training filter sends an empty 401 response.
 ## Interaction Event Fields
 
 `CustomerInteractionRecordedV1` uses topic `crm.customer.interactions.v1`, keyed by public `customerId`.
-The seven existing fields are a record stub; Kafka publication is pending. `eventId` and `actor` are planned
-additions for #30.
+Published once the interaction's database transaction commits; a rollback publishes nothing. A Kafka failure is
+logged with `eventId` and `correlationId` and does not undo the saved interaction.
 
 | Field | JSON type | Meaning |
 |-------|-----------|---------|
@@ -154,8 +154,8 @@ additions for #30.
 | `interactionType` | string | `CALL`, `EMAIL`, `NOTE` or `MEETING` |
 | `correlationId` | string | Effective value saved with the interaction |
 | `occurredAt` | string (ISO 8601 UTC timestamp) | Event time |
-| `eventId` | string (UUID), planned | Stable event ID for deduplication |
-| `actor` | string, planned | Authenticated JWT `sub` |
+| `eventId` | string (UUID) | Stable event ID for deduplication |
+| `actor` | string | Authenticated JWT `sub`; `demo-agent` under the dev bearer token |
 
 Events exclude the interaction summary and customer names/emails. Optional field additions remain in V1;
 removing fields, changing their types or adding required fields after V1 is published requires V2.
