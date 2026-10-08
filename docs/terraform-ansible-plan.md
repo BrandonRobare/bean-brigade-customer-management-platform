@@ -11,7 +11,6 @@ Deployments, Services, Ingress and runtime Secrets are applied by the release wo
 stay in Flyway migrations. Keep these definitions separate so one apply does not overwrite another's changes.
 
 The application scope excludes namespace creation, cluster quotas, nodes, storage classes and managed cloud services.
-S3 is used only for remote Terraform state.
 PostgreSQL remains on the internal network; it is not exposed through a public Service or Ingress.
 
 Use local and CI environments for static validation and an isolated rehearsal namespace for changes that need a
@@ -21,21 +20,16 @@ The [environment strategy](environment-strategy.md) defines promotion between en
 
 ## Terraform state
 
-Store state in a private Amazon S3 bucket with encryption, TLS, bucket versioning and S3 locking enabled through
-`use_lockfile = true`. Use a separate state key for each environment and pin a Terraform version that supports
-S3 lockfiles. Provision the backend and its access policy in the authorized training environment before running
-`terraform init` against it.
+State lives in the namespace, through Terraform's `kubernetes` backend: Secret `tfstate-default-crm` holds it and Lease
+`lock-tfstate-default-crm` locks it during plan and apply. The training AWS account is read-only for us, so the S3
+bucket this plan first named can't be created. Credentials come from `KUBE_CONFIG_PATH` at runtime, never from HCL.
+The backend settings and `.terraform.lock.hcl` are committed.
 
-Limit access to the environment's state key and lockfile. Include permission to delete the lockfile so Terraform
-can release a lock. Supply credentials at runtime; do not put them in HCL or pass them through `-backend-config`.
-Commit non-secret backend settings and `.terraform.lock.hcl` to make the configuration reproducible.
-
-Keep state, saved plans, variable files and crash output out of Git and public Actions artifacts. Publish only
-scrubbed plan summaries. `sensitive = true` hides values in normal output but does not remove them from state or
-saved plans. Restrict access to the backend, retain previous state versions for recovery, and never edit state by
-hand or force-unlock a running job. These controls follow
-[HashiCorp's S3 backend documentation](https://developer.hashicorp.com/terraform/language/backend/s3) and
-[sensitive-data guidance](https://developer.hashicorp.com/terraform/language/manage-sensitive-data).
+Only holders of the `student08` token can read that Secret, and the same token can already change everything in
+the namespace (R-14). Keep state, saved plans, variable files and crash output out of Git and out of Actions
+artifacts. The repo and its logs are public, so CD prints the plan's resource changes and a digest, never the plan
+itself. `sensitive = true` hides values in output but not in state. Never edit state by hand or force-unlock a
+running job. `import` blocks stay in the code, so lost state is re-adopted instead of recreated.
 
 ## Ansible configuration
 
@@ -64,15 +58,17 @@ explains the limits of `no_log`.
 
 ## Validation and release
 
-1. **Validate the PR.** Run `terraform fmt -check -recursive`, `terraform init -backend=false`,
-   `terraform validate` and `ansible-playbook --syntax-check`. PR validation has no state or cluster credentials.
-2. **Prepare the plan.** In a trusted job, check the target and permissions, initialize the remote backend and run
-   `terraform plan -out=tfplan`. Run Ansible check mode and inspect the non-secret diff. Keep the saved plan private.
+1. **Validate the PR.** The CI `iac` job runs Trivy on `openshift/` and `infra/terraform`, `terraform fmt -check -recursive`,
+   `terraform init -backend=false`, `terraform validate`, `ansible-playbook --syntax-check` and `ansible-lint`.
+   PR validation has no state or cluster credentials.
+2. **Prepare the plan.** Run CD with `infra-plan`. After the `production` approval it plans against the namespace,
+   runs Ansible check mode, and prints each resource change and a plan digest.
 3. **Review and approve.** Review resource additions, changes and deletions, storage, quota and secret handling.
-   Record approval against the commit, environment and saved plan. Generate a new plan after changes or drift.
-4. **Apply and deploy.** After approval, apply the saved Terraform plan, run Ansible configuration and deploy the
-   image digest already verified by CI. Do not rebuild the application during deployment. A failed stage stops
-   subsequent stages; inspect partial changes before retrying.
+   Approve by running CD with `infra-apply` and that digest. It plans again and refuses if the digest differs, so
+   drift or a new commit means a new review.
+4. **Apply and deploy.** `infra-apply` applies the plan and runs Ansible twice; the second run must report
+   `changed=0`. A `v*` tag then deploys the image digest already verified by CI, without rebuilding the application.
+   A failed stage stops subsequent stages; inspect partial changes before retrying.
 5. **Verify and record.** Check rollout and readiness, run authenticated and denied-path smoke tests, and retain
    scrubbed plan summaries, Ansible recaps, commit/run IDs, image digests and rollback results in the
    [runbook](capstone-cicd-runbook.md) and [evidence index](../defense/evidence-index.md).
@@ -86,7 +82,7 @@ before release; destructive changes require instructor approval and a recovery p
 | Requirement | How this plan addresses it |
 | --- | --- |
 | Lab 48 Step 5: scope, providers, remote state and environment boundaries. | Defines namespaced networking/storage and configuration, names the provider and Ansible collection, and separates state and credentials by environment. |
-| Module 48 PDF pp.22, 24, 26: reviewed plans, locked state, idempotence and no secrets in Git. | Uses encrypted, versioned S3 state with locking, reviews saved plans, requires a zero-change second Ansible run and injects secrets at runtime. |
+| Module 48 PDF pp.22, 24, 26: reviewed plans, locked state, idempotence and no secrets in Git. | Uses locked state in a namespace Secret, reviews plans by digest, requires a zero-change second Ansible run and injects secrets at runtime. |
 | Lab 51 Step 4 and Module 51 PDF pp.29, 31, 34: Terraform plan, approved apply and Ansible syntax/check stages. | Places validation, plan, review and apply before deployment; promotes the verified image digest without rebuilding it. |
 | Capstone brief: infrastructure is scoped, with automation evidence as assigned. | Limits automation to authorized namespace resources and records validation, configuration and release evidence. |
 | Module 52 PDF p.31: claims must point to reproducible artifacts. | Saves the plan summary, run recaps and release identity in the evidence index. |
