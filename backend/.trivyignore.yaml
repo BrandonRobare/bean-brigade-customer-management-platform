@@ -6,3 +6,28 @@ vulnerabilities:
       - pkg:maven/org.springframework/spring-webmvc@6.2.19
     expired_at: 2026-12-31
     statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
+  - id: CVE-2026-47886
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    expired_at: 2026-12-31
+    statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
+  - id: CVE-2026-47890
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    expired_at: 2026-12-31
+    statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
+  - id: CVE-2026-59282
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    expired_at: 2026-12-31
+    statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
+  - id: CVE-2026-59283
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    expired_at: 2026-12-31
+    statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
+  - id: CVE-2026-59313
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    expired_at: 2026-12-31
+    statement: "dc-006 accepted_risk: no XsltView or view rendering in backend/src/main. 6.2.19 is the last OSS 6.2.x; fix is Boot 4 / Spring 7. Owner: brandon"
