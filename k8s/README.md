@@ -11,11 +11,11 @@ CI publishes the API/UI image pair and `capstone-cd.yml` deploys it; the first l
 | Deployment | `crm-api`, `crm-ui` | Replace application pods and roll out new images |
 | StatefulSet | `crm-postgres`, `crm-kafka` | Keep predictable pod names and persistent disk claims |
 | Service | Internal API/UI, Postgres and Kafka names | Give callers stable addresses while pods change |
-| PVC | `data-crm-postgres-0`, `data-crm-kafka-0`, 2 GiB each | Keep database and Kafka data when a pod restarts |
-| ConfigMap | API, Kafka and platform settings | Hold configuration that is safe to commit |
+| PVC | `data-crm-postgres-0`, `data-crm-kafka-0`, 2 GiB each | Keep database and Kafka data when a pod restarts. Owned by Terraform (`infra/terraform/storage.tf`), which refuses to destroy them |
+| ConfigMap | API, Kafka and platform settings | Hold configuration that is safe to commit. `crm-api-config` is owned by Ansible (`infra/ansible`); `crm-platform` and `crm-kafka-config` stay here |
 | Secret | Referenced below; never defined with values here | Supply passwords, signing keys, registry login and TLS |
 | Ingress | `crm-https`, `crm-http` | Route a public hostname to the appropriate internal Service |
-| NetworkPolicy | Default deny plus explicit allowed flows | Restrict network access to the application pods |
+| NetworkPolicy | Default deny plus explicit allowed flows | Restrict network access to the application pods. Owned by Terraform (`infra/terraform/network.tf`) |
 | Job | `crm-kafka-topics` | Create the contract topic once, safely if it already exists |
 
 ```mermaid
@@ -36,12 +36,13 @@ requires HTTPS for API/metrics and leaves status-only health available to intern
 
 ## Required inputs before deployment
 
-`configuration.yaml` deliberately contains an invalid demo hostname and unconfirmed class/namespace markers.
-Replace **only the `crm-platform` data** with the approved hostname, StorageClass, IngressClass and controller
-namespace in a temporary release copy before rendering. Kustomize propagates those values into both Ingresses,
-TLS hosts, PVC templates and the ingress NetworkPolicy. DNS access currently assumes CoreDNS in `kube-system`;
-confirm this and that the cluster's CNI enforces NetworkPolicies. These are configuration candidates, not verified
-platform facts. Never change a StatefulSet's storage class after its PVCs are established without a migration.
+`configuration.yaml` deliberately contains an invalid demo hostname and unconfirmed class markers.
+Replace **only the `crm-platform` data** with the approved hostname, StorageClass and IngressClass in a temporary
+release copy before rendering. Kustomize propagates those values into both Ingresses, TLS hosts and PVC templates.
+Terraform's ingress NetworkPolicy takes the controller namespace from `TF_VAR_ingress_namespace`. DNS access currently
+assumes CoreDNS in `kube-system`; confirm this and that the cluster's CNI enforces NetworkPolicies. These are
+configuration candidates, not verified platform facts. Never change a StatefulSet's storage class after its PVCs
+are established without a migration.
 
 Release API/UI images are intentionally `:release-required` markers. `scripts/release.sh` replaces them with the
 CI-built digest pair at deploy time. Never substitute a mutable release tag or invent a digest. PostgreSQL 16.15 and Apache
