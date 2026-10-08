@@ -1,11 +1,11 @@
 # Failure experiments, 2026-10-08
 
 Lab 51 failure experiments 1-3, Lab 44 failure experiments 1-5 and Lab 44 Step 9, done on purpose to show the
-pipeline stops what it should. Local runs used a throwaway branch that was never pushed.
+pipeline stops what it should. The two red CI runs come from draft [PR #126](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/pull/126), closed unmerged, branch deleted.
 
 | # | Experiment | How | What stopped it | Status |
 | --- | --- | --- | --- | --- |
-| L51-1 | Break a unit test | Backend assertion flipped locally (no Angular specs yet) | `mvn verify` fails, no JAR, so no image | done locally; GitHub run pending |
+| L51-1 | Break a unit test | Backend assertion flipped locally (no Angular specs yet) | `backend` red, `image` skipped, merge blocked | done: local + [run 37833750321](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37833750321) |
 | L51-2 | Deploy rebuilds the JAR | Design + tests | CD has no Maven; it deploys only the digests in the tagged commit's `main` manifest | done |
 | L51-3 | Skip environment approval | Approval records + environment rules | `production` needs Brandon's approval, and only `main` and `v*` can deploy | done |
 | L44-1 | Promote a wrong digest | Release script tests | `release.sh deploy` refuses another commit's manifest, a tag instead of a digest, and images outside GHCR | done |
@@ -13,7 +13,7 @@ pipeline stops what it should. Local runs used a throwaway branch that was never
 | L44-3 | Roll back to the prior digest | Live on `student08` | 1 min 24 s to smoke 12/12 | done, see [release v0.1.1 report](release-v0.1.1-2026-10-08.md) |
 | L44-4 | Use `:latest` once | Release script tests | Refused: not a digest; CI never pushes `latest` | done |
 | L44-5 | Skip smoke | Workflow review | Smoke has no skip input; a pair only becomes known-good when it passes | done |
-| SAST | SQL injection reaches the gate | CodeQL CLI locally, same version and suite as CI | `java/sql-injection` high (8.8), CodeQL gate exits 1 | done locally; GitHub run pending |
+| SAST | SQL injection reaches the gate | CodeQL CLI locally, same version and suite as CI | `java/sql-injection` high (8.8): `sast` red, `image` skipped, merge blocked | done: local + [run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916) |
 | L44-9 | Peer dry-run of the rollback runbook | Teammate reads it cold | - | pending (needs Bryan or Chad) |
 
 ## L51-1: failing-test drill
@@ -33,9 +33,10 @@ java.lang.AssertionError: Status expected:<200> but was:<503>
 `test-reports`), and no JAR was built, so CI's `image` job would have nothing to package. Reverted, ran again:
 16 tests, 0 failures, JAR back.
 
-In CI the same failure makes `backend` red, which skips `image` and blocks the merge (`backend` is a required check).
-The GitHub run itself isn't done yet; PR #103's runs 37682029423 and 37683574215 show the same chain for the CI script
-tests in `sast`.
+On GitHub, draft PR #126 with the same commit: [run 37833750321](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37833750321) failed `backend`, skipped `image` (no `crm-api-jar` artifact)
+and the PR showed `BLOCKED`. `gh run download 37833750321 -n test-reports` gave the same
+`Status expected:<200> but was:<503>` in `TEST-com.northstar.crm.api.HealthApiIT.xml`. After the fix and the SAST
+step below, [run 37834456992](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834456992) was green on all seven jobs.
 
 Rerun steps: download the report with `gh run download <run> -n test-reports`, open the failing class's XML or
 TXT, fix, push. Never `-DskipTests`, never re-run hoping it goes green.
@@ -78,8 +79,10 @@ the same `./mvnw -DskipTests compile` as CI, `java-code-scanning` suite, then CI
 | Baseline (`main` code) | 2 × `java/spring-disabled-csrf-protection`, both excepted as cq-001 | exit 0 |
 | With the endpoint | the same 2, plus `java/sql-injection` (security-severity 8.8, high) at `CustomerLookupDrill.java:20` | exit 1, "CodeQL gate failed: high/critical findings" |
 
-In CI that exit fails `sast`, a required check, so the merge is blocked and `image` never runs. The GitHub run, and
-the alert in the Security tab, are still to do.
+On GitHub, the same commit on PR #126: [run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916) passed `backend` but failed `sast` at the CodeQL gate, skipped `image`,
+and the PR showed `BLOCKED`. The Security tab raised alert #4 (`java/sql-injection`, high,
+`CustomerLookupDrill.java:20`) on the PR only; it cleared when the next commit removed the endpoint ([run 37834456992](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834456992), green), and
+`main` never had it.
 
 ## L44-2: NO-GO tabletop (to do with Bryan)
 

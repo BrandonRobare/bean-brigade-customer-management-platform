@@ -95,8 +95,8 @@ gate: a high/critical is fixed, or a scoped exception goes into `.github/codeql-
 an expired or malformed entry fails the gate. Keep code scanning default setup off. Workflow actions are pinned to full SHAs;
 `.github/dependabot.yml` proposes weekly updates after a 7-day cooldown.
 
-`sast` is a required check (#53, PR #95). A deliberate failing run (a string-built JDBC query on a throwaway branch)
-is still to do, with the failing-test drill.
+`sast` is a required check (#53, PR #95). Proven on 2026-10-08 with a string-built JDBC query on throwaway PR #126:
+`java/sql-injection` (8.8) failed the gate, skipped `image` and blocked the merge ([run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916)).
 
 ## npm audit gate (#52)
 
