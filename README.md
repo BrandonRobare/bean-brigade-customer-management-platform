@@ -13,7 +13,7 @@ Angular → Spring Boot REST → PostgreSQL, with Kafka events, delivered throug
 | `docs/` | architecture, plans, backlog, runbooks |
 | `defense/` | final presentation packet |
 | `.github/workflows/` | CI and CD |
-| `compose.yaml` | local PostgreSQL |
+| `compose.yaml` | local PostgreSQL and Kafka |
 
 ## Run locally
 
