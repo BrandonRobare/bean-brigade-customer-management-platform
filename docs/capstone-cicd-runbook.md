@@ -47,6 +47,17 @@ cd infra/terraform && terraform fmt -check -recursive && terraform init -backend
 cd infra/ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook -i inventory.yml --syntax-check configure.yml
 ```
 
+## When a check goes red
+
+1. Open the failed job's summary. Each gate writes what failed and why there.
+2. Download the report from that run's artifacts: `gh run download <run-id> -n test-reports` (or `codeql-report`,
+   `dependency-check-report`, `npm-audit-report`, `iac-report`, `image-report`, `dast-report`, `ci-script-tests`).
+3. Reproduce it locally with the commands above, fix it, push. The PR reruns everything.
+4. Re-run a job without a code change only for an infrastructure blip (a registry or download timeout), never to
+   hope a test goes green. Never `-DskipTests`; never lower a gate's threshold to pass.
+
+Drill record: [`reports/failure-experiments-2026-10-08.md`](../reports/failure-experiments-2026-10-08.md).
+
 ## Package once
 
 If `verify` passed, the `backend` job keeps the JAR it just tested (#49):
