@@ -1,0 +1,6 @@
+misconfigurations:
+  - id: KSV-0014
+    paths:
+      - "stateful.yaml"
+    expired_at: 2027-01-31
+    statement: "iac-001 accepted_risk: the upstream Kafka entrypoint writes /opt/kafka/config at start, so crm-kafka keeps a writable root. It runs non-root, drops all capabilities and disallows privilege escalation; PostgreSQL, API and UI roots are read-only. Fix: copy the config into an emptyDir in an initContainer. Owner: brandon"

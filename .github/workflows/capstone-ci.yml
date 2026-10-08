@@ -244,9 +244,47 @@ jobs:
           path: gitleaks.json
           if-no-files-found: warn
 
+  # --- iac: Trivy misconfiguration scan of the Kubernetes manifests, fails at high/critical ---
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Trivy
+        run: |
+          curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz
+          echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy_0.75.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
+      - name: Trivy config report
+        run: ./trivy config --quiet --format json --output trivy-config.json openshift
+      - name: Trivy config gate
+        run: ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile openshift/.trivyignore.yaml openshift
+      - name: Findings summary
+        if: always()
+        run: |
+          {
+            echo "### Kubernetes manifests (Trivy config)"
+            if [ -f trivy-config.json ]; then
+              echo "| Severity | Findings |"
+              echo "|---|---|"
+              jq -r '[.Results[]?.Misconfigurations[]?.Severity]
+                | if length == 0 then "| none | 0 |"
+                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy-config.json
+              echo
+              echo "Fails at HIGH/CRITICAL not triaged in \`openshift/.trivyignore.yaml\`. Full report in the \`iac-report\` artifact."
+            else
+              echo "No report: the scan didn't finish. Check the Trivy config step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: iac-report
+          path: trivy-config.json
+          if-no-files-found: warn
+
   # --- image: build API + UI from the verified JAR and dist, Trivy scan on every run, push the pair to GHCR on main only ---
   image:
-    needs: [frontend, backend, scan, sast, secrets]
+    needs: [frontend, backend, scan, sast, secrets, iac]
     runs-on: ubuntu-latest
     permissions:
       contents: read
