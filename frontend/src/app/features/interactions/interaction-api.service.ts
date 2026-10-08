@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { CreateInteractionRequest, Interaction } from './interaction.model';
 
@@ -11,14 +11,12 @@ export class InteractionApiService {
 
   list(customerId: string): Observable<Interaction[]> {
     // TODO: GET this.base with query param customerId via HttpClient
-    void this.http;
-    void HttpParams;
-    void customerId;
-    return of([]);
+    const params = new HttpParams().set('customerId', customerId);
+    return this.http.get<Interaction[]>(this.base, { params });
   }
 
   create(body: CreateInteractionRequest): Observable<Interaction> {
     // TODO: POST this.base with JSON body
-    throw new Error('TODO: implement InteractionApiService.create');
+    return this.http.post<Interaction>(this.base, body);
   }
 }
