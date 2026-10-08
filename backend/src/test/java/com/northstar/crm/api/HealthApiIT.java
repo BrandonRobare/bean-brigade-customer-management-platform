@@ -27,7 +27,7 @@ class HealthApiIT {
         .andExpect(content().json("{\"status\":\"UP\"}", true));
     ((HikariDataSource) dataSource).close();
     http.perform(get("/actuator/health/readiness"))
-        .andExpect(status().isOk())
+        .andExpect(status().isServiceUnavailable())
         .andExpect(content().json("{\"status\":\"DOWN\"}", true));
     http.perform(get("/actuator/health/liveness"))
         .andExpect(status().isOk())
