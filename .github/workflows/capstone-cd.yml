@@ -1,5 +1,6 @@
 # .github/workflows/capstone-cd.yml
 name: Capstone CD
+run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('{0} by {1}', inputs.action, github.actor) }}
 
 on:
   push:
