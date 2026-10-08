@@ -91,9 +91,8 @@ before release; destructive changes require instructor approval and a recovery p
 | Capstone brief: infrastructure is scoped, with automation evidence as assigned. | Limits automation to authorized namespace resources and records validation, configuration and release evidence. |
 | Module 52 PDF p.31: claims must point to reproducible artifacts. | Saves the plan summary, run recaps and release identity in the evidence index. |
 
-The course specifies OpenShift. This plan adapts it to the supplied k3s cluster, using a Kubernetes namespace and
-Ingress instead of OpenShift Projects and Routes. Confirm that substitution against the deployment requirement
-before applying; record the decision in the [risk register](risk-register.md).
+This plan targets the supplied k3s cluster, using a Kubernetes namespace and Ingress. Adel confirmed k3s on
+2026-10-08 (R-02 in the [risk register](risk-register.md)).
 
 Sources: [Lab 48 Step 5](https://github.com/Innovation-In-Software/bc-sw-engineer-java-angular-participant/blob/f87d5852c78b8b13c67bab7470d17cff3d5fa5e9/labs/Week%206%20-%20Capstone%20Project/module-48/lab48/LAB-48-GUIDE.md#step-5--terraform--ansible-and-environment-strategy),
 [Lab 51 Step 4](https://github.com/Innovation-In-Software/bc-sw-engineer-java-angular-participant/blob/f87d5852c78b8b13c67bab7470d17cff3d5fa5e9/labs/Week%206%20-%20Capstone%20Project/module-51/lab51/LAB-51-GUIDE.md#step-4--terraformansible-stages-and-openshift-deploy),

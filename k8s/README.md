@@ -1,7 +1,6 @@
 # Capstone Kubernetes deployment files
 
-These files target the supplied **k3s `student08` namespace**, not native OpenShift. The assignment's folder name is
-retained for traceability to Labs 48/51. Instructor acceptance of the platform substitution remains open.
+These files target the supplied **k3s `student08` namespace**; Adel confirmed k3s on 2026-10-08 (R-02).
 CI publishes the API/UI image pair and `capstone-cd.yml` deploys it; the first live release waits on platform inputs (R-02).
 
 ## What each piece does
@@ -60,7 +59,7 @@ No Secret value, kubeconfig, IP or real hostname belongs in this directory. CD w
 in Step 6. The runtime ServiceAccount has no RBAC grants and does not mount an API token. Containers run non-root,
 drop capabilities and prohibit privilege escalation. API/UI/Postgres use read-only roots plus scratch mounts.
 Kafka's supported upstream entrypoint writes `/opt/kafka/config`, so its root stays writable; data goes to its PVC.
-Fixed UIDs are validated for these k3s images, not for OpenShift's arbitrary-UID SCC policy.
+Fixed UIDs are validated for these k3s images.
 
 ## Quota and rollout order
 
@@ -104,8 +103,8 @@ own recovery planning. Splitting Kafka roles while retaining data is a planned m
 From the repository root:
 
 ```sh
-kubectl kustomize openshift
-kubectl --context student08 apply --dry-run=server --validate=strict -k openshift
+kubectl kustomize k8s
+kubectl --context student08 apply --dry-run=server --validate=strict -k k8s
 ```
 
 The first command renders files locally. The second asks the Kubernetes API to validate requests but does not
