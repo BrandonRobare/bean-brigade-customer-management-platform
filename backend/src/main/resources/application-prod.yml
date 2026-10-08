@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      connection-timeout: 2000
+      validation-timeout: 1000
+server:
+  forward-headers-strategy: framework
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+crm:
+  security:
+    jwt-private-key: ${JWT_PRIVATE_KEY}
+    jwt-public-key: ${JWT_PUBLIC_KEY}
+    agent-password: ${DEMO_AGENT_PASSWORD}
+    admin-password: ${DEMO_ADMIN_PASSWORD}

@@ -1,4 +1,8 @@
 spring:
+  profiles:
+    default: dev
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   application:
     name: lab50-crm
   datasource:
@@ -13,3 +17,19 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db

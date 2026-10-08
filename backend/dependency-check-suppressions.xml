@@ -72,4 +72,19 @@
     <packageUrl regex="true">^pkg:maven/org\.apache\.logging\.log4j/log4j\-[a-z0-9\-]+@2\.24\.3$</packageUrl>
     <cve>CVE-2026-34479</cve>
   </suppress>
+  <suppress until="2027-04-05Z">
+    <notes>dc-008 false_positive: Spring Security CVE-2026-59270, embedded UnboundID LDAP server (UnboundIdContainer); no spring-security-ldap or UnboundID on the classpath. 6.5.11 is the last OSS 6.5.x; the fix is Spring Security 7 / Boot 4. Owner: brandon</notes>
+    <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring\-security\-[a-z0-9\-]+@6\.5\.11$</packageUrl>
+    <cve>CVE-2026-59270</cve>
+  </suppress>
+  <suppress until="2027-04-05Z">
+    <notes>dc-008 false_positive: Spring Security CVE-2026-41707, DPoPProofJwtDecoderFactory replay; we decode plain bearer JWTs with NimbusJwtDecoder, no DPoP. 6.5.11 is the last OSS 6.5.x; the fix is Spring Security 7 / Boot 4. Owner: brandon</notes>
+    <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring\-security\-[a-z0-9\-]+@6\.5\.11$</packageUrl>
+    <cve>CVE-2026-41707</cve>
+  </suppress>
+  <suppress until="2027-04-05Z">
+    <notes>dc-008 false_positive: Spring Security CVE-2026-47841, WebAuthn user verification with a distributed session store; no WebAuthn, sessions are STATELESS. 6.5.11 is the last OSS 6.5.x; the fix is Spring Security 7 / Boot 4. Owner: brandon</notes>
+    <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring\-security\-[a-z0-9\-]+@6\.5\.11$</packageUrl>
+    <cve>CVE-2026-47841</cve>
+  </suppress>
 </suppressions>

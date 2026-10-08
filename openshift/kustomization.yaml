@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: student08
+resources:
+  - configuration.yaml
+  - application.yaml
+  - stateful.yaml
+  - kafka-topics.yaml
+  - ingress.yaml
+  - network-policy.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: bean-brigade
+    includeSelectors: true
+    includeTemplates: true
+replacements:
+  - source:
+      kind: ConfigMap
+      name: crm-platform
+      fieldPath: data.hostname
+    targets:
+      - select:
+          kind: Ingress
+        fieldPaths: [spec.rules.0.host]
+      - select:
+          kind: Ingress
+          name: crm-https
+        fieldPaths: [spec.tls.0.hosts.0]
+  - source:
+      kind: ConfigMap
+      name: crm-platform
+      fieldPath: data.ingress-class
+    targets:
+      - select:
+          kind: Ingress
+        fieldPaths: [spec.ingressClassName]
+  - source:
+      kind: ConfigMap
+      name: crm-platform
+      fieldPath: data.storage-class
+    targets:
+      - select:
+          kind: StatefulSet
+        fieldPaths: [spec.volumeClaimTemplates.0.spec.storageClassName]
+  - source:
+      kind: ConfigMap
+      name: crm-platform
+      fieldPath: data.ingress-namespace
+    targets:
+      - select:
+          kind: NetworkPolicy
+          name: crm-ingress
+        fieldPaths: ['spec.ingress.0.from.0.namespaceSelector.matchLabels.[kubernetes.io/metadata.name]']
