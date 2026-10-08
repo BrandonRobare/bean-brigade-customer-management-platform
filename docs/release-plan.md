@@ -47,7 +47,7 @@ staging ([R-01](risk-register.md)); CI is the test stage and a local k3d cluster
 
 Production names only, never values: environment secrets `KUBECONFIG`, `CRM_DB_PASSWORD`, `CRM_AGENT_PASSWORD`,
 `CRM_ADMIN_PASSWORD`, `CRM_JWT_PRIVATE_KEY`, `CRM_JWT_PUBLIC_KEY`, optional `CRM_TLS_CERT` / `CRM_TLS_KEY`; environment
-variables `PLATFORM_HOSTNAME`, `INGRESS_CLASS`, `STORAGE_CLASS`, `INGRESS_NAMESPACE`. `ghcr-pull` is made once by hand.
+variables `PLATFORM_HOSTNAME`, `INGRESS_CLASS`, `STORAGE_CLASS`, `INGRESS_NAMESPACE`.
 
 ## Rollout
 

@@ -54,7 +54,6 @@ update these deliberately; local startup alone is not a clean image scan. nginx'
 | `crm-db` | `password` | PostgreSQL initialization and API JDBC |
 | `crm-auth` | `agent-password`, `admin-password` | Synthetic production login accounts |
 | `crm-jwt` | `jwt-private.pem`, `jwt-public.pem` | API mount at `/var/run/secrets/jwt`, mode 0440 and fsGroup 10001 |
-| `ghcr-pull` | `kubernetes.io/dockerconfigjson` | Runtime ServiceAccount's private image pulls |
 | `crm-tls` | `kubernetes.io/tls` | Trusted certificate/key for the approved Ingress hostname |
 
 No Secret value, kubeconfig, IP or real hostname belongs in this directory. CD will upsert approved values securely
