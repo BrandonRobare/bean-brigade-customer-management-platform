@@ -115,6 +115,26 @@ artifact, and the run summary prints the digest.
 
 Deploy by `@sha256:<digest>` only, never by tag.
 
+## DAST (#69)
+
+After the Trivy gate and before the push, `image` runs `scripts/dast.sh` against the candidate pair it just built. It
+starts Postgres, the API (prod profile, throwaway keys and passwords) and the UI, all read-only and non-root, behind
+an nginx edge that routes like the Ingress. Then:
+
+- Probes: readiness; anonymous and forged-token reads are 401; anonymous metrics is 401; `env`, `beans`,
+  `configprops`, `heapdump`, `loggers` and `mappings` are not exposed; malformed JSON gets no stack trace; a
+  preflight from another origin gets no CORS grant; AGENT login, customer read 200, metrics 403. Any FAIL stops the job.
+- ZAP baseline (spider plus passive scan, image pinned by digest) through the edge. `check-zap-report.py` writes the
+  summary and fails on a high alert not excepted in `.github/zap-exceptions.json` (`id`, `plugin`, `match`, `owner`,
+  `reason`, `until`), with a matching row in `docs/security-findings.csv`. Medium and lower show in the summary.
+
+Probes, `zap.json`, `zap.html` and the ZAP log are in the `dast-report` artifact. A failure means no push, so CD has
+nothing to promote. Kafka isn't started: the API doesn't publish yet (#30), so the event path isn't covered.
+
+```bash
+API_IMAGE=crm-api:local UI_IMAGE=crm-ui:local bash scripts/dast.sh && python3 .github/scripts/check-zap-report.py
+```
+
 ## Infrastructure
 
 Terraform owns the NetworkPolicies and the two PVCs; Ansible owns `crm-api-config`

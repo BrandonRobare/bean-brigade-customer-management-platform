@@ -1,0 +1,10 @@
+[
+  {
+    "id": "zap-001",
+    "plugin": "10003",
+    "match": "@angular/core, version 19.2.25",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "Same Angular 19.2 advisories as npm-001: no SSR, hydration, HttpTransferCache or i18n in this app. Fix is the Angular upgrade, which also closes npm-001."
+  }
+]
