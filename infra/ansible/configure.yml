@@ -1,0 +1,44 @@
+---
+- name: Configure the CRM API
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Require an explicit cluster context
+      ansible.builtin.assert:
+        that:
+          - crm_context | default('') | length > 0
+        fail_msg: "Pass -e crm_context=<kubeconfig context>."
+        quiet: true
+
+    - name: Apply crm-api-config
+      kubernetes.core.k8s:
+        context: "{{ crm_context }}"
+        namespace: "{{ crm_namespace }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: crm-api-config
+            labels:
+              app.kubernetes.io/part-of: bean-brigade
+          data: "{{ crm_api_config }}"
+      notify: Restart crm-api
+
+  handlers:
+    - name: Restart crm-api
+      kubernetes.core.k8s:
+        context: "{{ crm_context }}"
+        namespace: "{{ crm_namespace }}"
+        state: patched
+        api_version: apps/v1
+        kind: Deployment
+        name: crm-api
+        definition:
+          spec:
+            template:
+              metadata:
+                annotations:
+                  bean-brigade/config-sha256: "{{ crm_api_config | to_json | hash('sha256') }}"
+        wait: true
+        wait_timeout: 300
