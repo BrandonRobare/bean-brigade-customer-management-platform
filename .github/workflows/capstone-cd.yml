@@ -7,10 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Restore the last release whose smoke passed"
+        description: "rollback: restore the last release whose smoke passed. infra-plan, infra-apply: Terraform and Ansible"
         required: true
         type: choice
-        options: [rollback]
+        options: [rollback, infra-plan, infra-apply]
+      plan_digest:
+        description: "infra-apply only: the plan digest that infra-plan printed"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +28,7 @@ concurrency:
 env:
   NAMESPACE: student08
   KUBECONFIG: ${{ github.workspace }}/.kube/config
+  KUBE_CONFIG_PATH: ${{ github.workspace }}/.kube/config
 
 jobs:
   # --- promote: deploy the API/UI pair main already built for the tagged commit, then smoke ---
@@ -97,7 +102,7 @@ jobs:
 
   # --- rollback: restore the last known-good pair, then smoke again ---
   rollback:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -121,3 +126,71 @@ jobs:
       - name: Record result
         if: always() && steps.smoke.outcome != 'skipped'
         run: bash scripts/release.sh mark "${{ steps.smoke.outcome == 'success' && 'succeeded' || 'failed' }}"
+
+  # --- infra: Terraform plan (and apply on infra-apply), Ansible check (or two real runs on infra-apply) ---
+  infra:
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'rollback'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Cluster credentials
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$KUBECONFIG")"
+          printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+      - name: Install Terraform and Ansible
+        run: bash scripts/install-iac-tools.sh
+      - name: Terraform plan
+        id: plan
+        working-directory: infra/terraform
+        env:
+          TF_VAR_ingress_namespace: ${{ vars.INGRESS_NAMESPACE }}
+          TF_VAR_storage_class: ${{ vars.STORAGE_CLASS }}
+        run: |
+          terraform init -input=false > /dev/null
+          terraform plan -input=false -lock-timeout=120s -out=tfplan > /dev/null
+          terraform show -json tfplan | jq -S '[.resource_changes[]?
+            | {address, actions: .change.actions, importing: (.change.importing != null), before: .change.before, after: .change.after}]' > changes.json
+          digest=$(sha256sum changes.json | cut -c1-16)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Terraform plan"
+            echo "| Resource | Action |"
+            echo "|---|---|"
+            jq -r 'map(select(.importing or .actions != ["no-op"]))
+              | if length == 0 then "| none | no changes |"
+                else .[] | "| \(.address) | \(if .importing then "import " else "" end)\(.actions | join(", ")) |" end' changes.json
+            echo
+            echo "Plan digest \`$digest\`. To apply exactly this plan, run CD with infra-apply and this digest."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Ansible check
+        if: inputs.action == 'infra-plan'
+        run: ansible-playbook -i infra/ansible/inventory.yml --check --diff -e crm_context="$(kubectl config current-context)" infra/ansible/configure.yml
+      - name: Terraform apply
+        if: inputs.action == 'infra-apply'
+        working-directory: infra/terraform
+        env:
+          PLAN_DIGEST: ${{ inputs.plan_digest }}
+          DIGEST: ${{ steps.plan.outputs.digest }}
+        run: |
+          if [ "$DIGEST" != "$PLAN_DIGEST" ]; then
+            echo "::error::This plan is $DIGEST, not the reviewed $PLAN_DIGEST. Run infra-plan again and review it."
+            exit 1
+          fi
+          terraform apply -input=false -lock-timeout=120s tfplan > /dev/null
+      - name: Ansible, twice
+        if: inputs.action == 'infra-apply'
+        run: |
+          set -o pipefail
+          for run in 1 2; do
+            ansible-playbook -i infra/ansible/inventory.yml -e crm_context="$(kubectl config current-context)" \
+              infra/ansible/configure.yml | tee "ansible-run-$run.log"
+          done
+          recap=$(grep -E '^localhost +:' ansible-run-2.log)
+          echo "### Ansible second run" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$recap\`" >> "$GITHUB_STEP_SUMMARY"
+          idempotent='changed=0 +unreachable=0 +failed=0'
+          [[ "$recap" =~ $idempotent ]] || { echo "::error::The second run changed something, so the playbook isn't idempotent."; exit 1; }
