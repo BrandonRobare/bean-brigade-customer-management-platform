@@ -35,7 +35,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
 | `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `crm-ui-dist` artifact (`dist/` + `SHA256SUMS`) for the `image` job                                                                              |
 | `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `./mvnw -B -ntp clean verify` (Maven Wrapper, 3.10.0, checksum-pinned)                                                                                                        | no                                 | Brandon                   | `test-reports` (Surefire) artifact on every run, failures included; JAR + `SHA256SUMS`                                                          |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55, blocking); `npm audit --omit=dev --audit-level=high` report-only (#52)                                    | yes: required `scan`               | Carter                    | `dependency-check-report` artifact + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55, blocking); `npm audit --omit=dev --audit-level=high` blocking with per-advisory exceptions (#52)                                    | yes: required `scan`               | Carter                    | `dependency-check-report` and `npm-audit-report` artifacts + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | CodeQL (`github/codeql-action` v4.38.2) on `java-kotlin` (traced `mvn compile`), `javascript-typescript` and `actions`, default query suite; results to the Security tab; `check-codeql-sarif.py` fails at security-severity 7.0+ (high/critical) or a missing/failed analysis (#53) | job blocking; required check pending | Brandon | `codeql-report` SARIF artifact, job summary, Security tab alerts; triage in `docs/security-findings.csv` |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
@@ -59,7 +59,7 @@ set it to 1.
 
 | Scan         | Tool                                                     | When                                 | Fails at      | Status                                                                          |
 |--------------|----------------------------------------------------------|--------------------------------------|---------------|---------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` report-only in `scan` (#52), Carter |
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` blocking in `scan` (#52), Carter |
 | SAST         | CodeQL (Java, TypeScript, Actions workflows)             | PR, `main`                           | high / critical (7.0+) | CodeQL job blocking; required-check setup pending |
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
 | IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | blocking at HIGH/CRITICAL in the `iac` job (#57), Brandon; `infra/` joins when it exists |
@@ -67,13 +67,13 @@ set it to 1.
 | DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
 
 - **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
-  Dependency-Check and CodeQL have completed their initial triage and now fail CI; `npm audit` runs report-only and the IaC
-  gate remains separate work.
+  Dependency-Check, CodeQL and `npm audit` have completed their initial triage and now fail CI; the IaC gate remains
+  separate work.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
   `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
-  in `backend/.trivyignore.yaml` carries the same three fields.
+  in `backend/.trivyignore.yaml` or an npm exception in `.github/npm-audit-exceptions.json` carries the same three fields.
 - **`npm audit` skips dev dependencies** (`--omit=dev`): only what ships to the browser is gated. Today that's 4 highs
-  in `@angular/*` 19.2.25, fixed only in Angular 22, so they're triaged, not force-upgraded (no `npm audit fix --force`).
+  in `@angular/*` 19.2.25, fixed only in Angular 22, so they're excepted per advisory until 2026-12-31 (`npm-001`), not force-upgraded (no `npm audit fix --force`).
 - **Dependabot alerts stay on** to watch `main` between builds. They don't gate anything; a finding they raise is
   triaged in the same CSV.
 - **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data weekly either way.
@@ -164,8 +164,8 @@ credentials. Moving to a private registry later means adding a pull secret back 
 
 1. Real `frontend` and `backend` jobs (#39) for CP1. They go green once `InteractionService` merges.
 2. Dependency-Check (#55) blocks CI, merging and image publication; confirm the post-merge `main` run. CodeQL
-   `sast` (#53) also gates `image`; its required-check setup remains pending. Add and triage the remaining scans
-   separately (#52, #57).
+   `sast` (#53) also gates `image`; its required-check setup remains pending. `npm audit` (#52) blocks in `scan`
+   with per-advisory exceptions. Add and triage the IaC scan separately (#57).
 3. `iac-check` alongside the first Terraform / Ansible files.
 4. `image` with its digest and Trivy scan, and the first trivial deploy to `student08` (manual `promote`) now that
    cluster access exists (2026-10-06).
