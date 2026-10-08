@@ -22,7 +22,7 @@ course gives us no identity provider. Who issues our tokens, and how does the AP
 ## Considered Options
 
 1. **Self-issued JWT:** our API signs tokens at a login endpoint and checks them itself.
-2. **Keycloak:** a real identity provider, but a second container to configure and deploy to OpenShift, about a day of
+2. **Keycloak:** a real identity provider, but a second container to configure and deploy to k3s, about a day of
    work, and one more thing to break in the demo.
 3. **Auth0:** real OIDC with no server to run, but it needs an outside account, isn't on the taught stack, and the demo
    would depend on PNC's internet.
@@ -64,7 +64,7 @@ The endpoint shapes go in `docs/contract.md`, and the access rules and wiring go
 - Good, because tokens expire: a leaked one works for 30 minutes at most.
 - Bad, because we hold the private key. If `JWT_PRIVATE_KEY` leaks, anyone can mint an ADMIN token until we replace the
   key pair, and replacing it signs everyone out. It goes in the risk register.
-- Bad, because a key pair is more setup than one secret string: generate it, mount it as an OpenShift Secret, and
+- Bad, because a key pair is more setup than one secret string: generate it, mount it as a Kubernetes Secret, and
   have tests generate their own.
 - Bad, because there's no refresh, revocation, lockout or login rate limit. These are non-claims: a token stays valid
   until it expires, even after logout.

@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parents[3]
 @unittest.skipUnless(shutil.which("kubectl"), "needs kubectl")
 class BundleOwnershipTest(unittest.TestCase):
     def test_bundle_leaves_terraform_and_ansible_objects_alone(self):
-        rendered = subprocess.run(["kubectl", "kustomize", "openshift"], cwd=REPO,
+        rendered = subprocess.run(["kubectl", "kustomize", "k8s"], cwd=REPO,
                                   capture_output=True, text=True, check=True).stdout
         objects = {(re.search(r"^kind: (\S+)$", doc, re.M).group(1), re.search(r"^  name: (\S+)$", doc, re.M).group(1))
                    for doc in rendered.split("\n---\n")}

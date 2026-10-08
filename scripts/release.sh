@@ -35,7 +35,7 @@ roll() {
 render() {
   local dir
   dir=$(mktemp -d)
-  cp -R openshift "$dir/base"
+  cp -R k8s "$dir/base"
   rm -f "$dir/base/README.md"
   sed -i.bak \
     -e "s|^  hostname: .*|  hostname: ${PLATFORM_HOSTNAME:?}|" \

@@ -50,7 +50,7 @@ Local, 2026-10-07:
   the namespace: `changed=0`. Missing `crm_context`: the assert fails the play.
 - Changed ConfigMap value in check mode: task `changed`, handler fired, live ConfigMap untouched.
 - Trivy 0.75.0 config: `infra/terraform` has no findings. With `ip_block { cidr = "0.0.0.0/0" }` added to
-  `crm-ingress`, the gate fails on KUBE-0001 (HIGH, unrestricted ingress). The YAML scan of `openshift/` has no
+  `crm-ingress`, the gate fails on KUBE-0001 (HIGH, unrestricted ingress). The YAML scan of `k8s/` has no
   equivalent rule, so moving the policies to Terraform adds this check.
 
 Live (CD runs):

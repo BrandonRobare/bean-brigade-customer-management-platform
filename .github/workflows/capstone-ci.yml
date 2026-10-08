@@ -243,11 +243,11 @@ jobs:
           tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
       - name: Trivy config report
         run: |
-          ./trivy config --quiet --format json --output trivy-config.json openshift
+          ./trivy config --quiet --format json --output trivy-config.json k8s
           ./trivy config --quiet --format json --output trivy-terraform.json infra/terraform
       - name: Trivy config gate
         run: |
-          ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile openshift/.trivyignore.yaml openshift
+          ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile k8s/.trivyignore.yaml k8s
           ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 infra/terraform
       - name: Install Terraform and Ansible
         run: bash scripts/install-iac-tools.sh
@@ -280,7 +280,7 @@ jobs:
               fi
             done
             echo
-            echo "Fails at HIGH/CRITICAL not triaged in \`openshift/.trivyignore.yaml\`. Full reports in the \`iac-report\` artifact."
+            echo "Fails at HIGH/CRITICAL not triaged in \`k8s/.trivyignore.yaml\`. Full reports in the \`iac-report\` artifact."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
