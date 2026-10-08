@@ -1,0 +1,2 @@
+ingress_namespace = "ingress-controller-namespace"
+storage_class     = "storage-class-name"

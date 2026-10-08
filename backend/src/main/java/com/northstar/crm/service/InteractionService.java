@@ -6,10 +6,12 @@ import com.northstar.crm.domain.CustomerEntity;
 import com.northstar.crm.domain.InteractionEntity;
 import com.northstar.crm.repo.CustomerRepository;
 import com.northstar.crm.repo.InteractionRepository;
+import com.northstar.crm.messaging.CustomerInteractionRecordedV1;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 @Service
 public class InteractionService {
@@ -18,11 +20,13 @@ public class InteractionService {
 
   private final CustomerRepository customerRepository;
   private final InteractionRepository interactionRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   public InteractionService(
-      CustomerRepository customerRepository, InteractionRepository interactionRepository) {
+      CustomerRepository customerRepository, InteractionRepository interactionRepository, ApplicationEventPublisher eventPublisher) {
     this.customerRepository = customerRepository;
     this.interactionRepository = interactionRepository;
+    this.eventPublisher = eventPublisher;
   }
 
   @Transactional(readOnly = true)
@@ -44,7 +48,7 @@ public class InteractionService {
   }
 
   @Transactional
-  public InteractionResponse create(CreateInteractionRequest request, String correlationHeader) {
+  public InteractionResponse create(CreateInteractionRequest request, String correlationHeader, String actor) {
     CustomerEntity customer =
         customerRepository
             .findByPublicId(request.customerId())
@@ -65,6 +69,20 @@ public class InteractionService {
     interaction.setCorrelationId(correlationId);
 
     InteractionEntity saved = interactionRepository.save(interaction);
+
+    CustomerInteractionRecordedV1 event = new CustomerInteractionRecordedV1(
+            CustomerInteractionRecordedV1.TYPE,
+            CustomerInteractionRecordedV1.VERSION,
+            saved.getId(),
+            saved.getCustomer().getPublicId(),
+            saved.getInteractionType(),
+            saved.getCorrelationId(),
+            saved.getCreatedAt(),
+            UUID.randomUUID(),
+            actor);
+
+    eventPublisher.publishEvent(event);
+
     return new InteractionResponse(
         saved.getId(),
         saved.getCustomer().getPublicId(),

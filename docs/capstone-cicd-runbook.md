@@ -17,15 +17,17 @@ Never paste cluster credentials into this file.
 
 ## PR gates
 
-`.github/workflows/capstone-ci.yml` runs on every PR and every push to `main`. Merge enforcement is configured in
-GitHub's `protect-main` ruleset. The live 2026-10-06 snapshot requires only `secrets`; requiring `frontend` and
-`backend` remains #25 work. The #53 branch adds a blocking `sast` job; adding it as a required merge check remains
-a GitHub settings step after CI verification.
+`.github/workflows/capstone-ci.yml` runs on every PR and every push to `main`. GitHub's `protect-main` ruleset
+(checked 2026-10-08) requires a PR, squash merges only, and all seven CI jobs to pass: `frontend`, `backend`, `scan`,
+`sast`, `secrets`, `iac` and `image`. Required approvals are 0 for now (plan: 1); stale approvals are dismissed, the branch can't be deleted or force-pushed, and
+nobody can bypass. `image` only runs once the other six pass, so a red gate anywhere blocks the merge.
 
 - Angular (`frontend`): Node 22, `npm ci`, `npx ng build --configuration=production`. `ng test` joins once there are
   specs.
 - Maven (`backend`): Java 21, `mvn -B -ntp clean verify` against a `postgres:16` service (db `crm`, the same throwaway
   values as `compose.yaml`). Never `-DskipTests`.
+- IaC (`iac`): Trivy config on `k8s/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
+  `ansible-lint`. Applying is a separate CD job ([Infrastructure](#infrastructure)).
 
 Same checks locally, before pushing:
 
@@ -36,6 +38,25 @@ cd frontend && npm ci && npx ng build --configuration=production
 ```bash
 docker compose up -d && cd backend && mvn -B clean verify
 ```
+
+```bash
+cd infra/terraform && terraform fmt -check -recursive && terraform init -backend=false && terraform validate
+```
+
+```bash
+cd infra/ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook -i inventory.yml --syntax-check configure.yml
+```
+
+## When a check goes red
+
+1. Open the failed job's summary. Each gate writes what failed and why there.
+2. Download the report from that run's artifacts: `gh run download <run-id> -n test-reports` (or `codeql-report`,
+   `dependency-check-report`, `npm-audit-report`, `iac-report`, `image-report`, `dast-report`, `ci-script-tests`).
+3. Reproduce it locally with the commands above, fix it, push. The PR reruns everything.
+4. Re-run a job without a code change only for an infrastructure blip (a registry or download timeout), never to
+   hope a test goes green. Never `-DskipTests`; never lower a gate's threshold to pass.
+
+Drill record: [`reports/failure-experiments-2026-10-08.md`](../reports/failure-experiments-2026-10-08.md).
 
 ## Package once
 
@@ -59,7 +80,8 @@ CodeQL analyzes Java (traced `mvn compile`), TypeScript and the workflow files o
 Security tab and the `codeql-report` artifact keeps the SARIF. `python3 .github/scripts/check-codeql-sarif.py
 codeql-results/*.sarif` writes a severity table to the job summary and fails at security-severity 7.0+ (high/critical)
 or a missing, malformed or failed analysis. Medium, low and non-security results are listed and don't block. The job
-runs the CI script tests first; the gate and artifact run with `if: always()`.
+runs the CI script tests first and keeps their output in the `ci-script-tests` artifact; the gate and artifacts run
+with `if: always()`.
 
 Run the gate tests locally from the repository root (Python 3, no packages):
 
@@ -73,13 +95,8 @@ gate: a high/critical is fixed, or a scoped exception goes into `.github/codeql-
 an expired or malformed entry fails the gate. Keep code scanning default setup off. Workflow actions are pinned to full SHAs;
 `.github/dependabot.yml` proposes weekly updates after a 7-day cooldown.
 
-To finish #53 on GitHub:
-
-1. Push/open a PR, run CI and add the observed `sast` status check to `protect-main`, keeping `secrets` required.
-2. On a disposable PR branch, add a SQL-injection fixture (string-built JDBC query). Confirm `sast` fails, the summary
-   and SARIF survive, merging is blocked and `image` is skipped. Remove the fixture and confirm green.
-3. Keep the failing/passing run URLs in the evidence index, merge the clean change and verify `main` before
-   closing #53 and moving its card to Done. A PR never publishes images, so a PR run alone is not proof of a gate.
+`sast` is a required check (#53, PR #95). Proven on 2026-10-08 with a string-built JDBC query on throwaway PR #126:
+`java/sql-injection` (8.8) failed the gate, skipped `image` and blocked the merge ([run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916)).
 
 ## npm audit gate (#52)
 
@@ -95,25 +112,64 @@ The gate tests run with the other CI script tests above.
 
 ## Image
 
-On every run, `image` waits for `backend` and `sast` to succeed, then checks the JAR against `SHA256SUMS`, builds
-`backend/Dockerfile` around it and scans the image with Trivy (#49). A critical finding fails the job before the push, unless it's triaged in
-`backend/.trivyignore.yaml` with a matching row in `docs/security-findings.csv`.
+On every run, `image` waits for all six other jobs to pass, then checks the JAR and the Angular `dist/` against their
+`SHA256SUMS` and builds `backend/Dockerfile` and `frontend/Dockerfile` around them, with no rebuild. Trivy (#49) scans
+both images: a critical fails the job before the push, unless it's triaged in `backend/.trivyignore.yaml` with a
+matching row in `docs/security-findings.csv`. Highs show in the report and get a CSV row too (img-001, img-002).
+Then [DAST](#dast-69) runs.
 
-On `main` only, it then pushes `ghcr.io/brandonrobare/crm-api:sha-<commit>` and writes `artifact-manifest.json`
-(version, commit, run ID, JAR checksum, API and UI image digests). The manifest and `trivy-api.json` / `trivy-ui.json` are in the `image-report`
-artifact, and the run summary prints the digest.
+On `main` only, it then pushes `ghcr.io/brandonrobare/crm-api:sha-<commit>` and `crm-ui:sha-<commit>` and writes
+`artifact-manifest.json` (version, commit, run ID, JAR and `dist/` checksums, both image digests). The manifest and
+`trivy-api.json` / `trivy-ui.json` are in the `image-report` artifact, and the run summary prints both digests.
 
 Deploy by `@sha256:<digest>` only, never by tag.
+
+## DAST (#69)
+
+After the Trivy gate and before the push, `image` runs `scripts/dast.sh` against the candidate pair it just built. It
+starts Postgres, the API (prod profile, throwaway keys and passwords) and the UI, all read-only and non-root, behind
+an nginx edge that routes like the Ingress. Then:
+
+- Probes: readiness; anonymous and forged-token reads are 401; anonymous metrics is 401; `env`, `beans`,
+  `configprops`, `heapdump`, `loggers` and `mappings` are not exposed; malformed JSON gets no stack trace; a
+  preflight from another origin gets no CORS grant; AGENT login, customer read 200, metrics 403. Any FAIL stops the job.
+- ZAP baseline (spider plus passive scan, image pinned by digest) through the edge. `check-zap-report.py` writes the
+  summary and fails on a high alert not excepted in `.github/zap-exceptions.json` (`id`, `plugin`, `match`, `owner`,
+  `reason`, `until`), with a matching row in `docs/security-findings.csv`. Medium and lower show in the summary.
+
+Probes, `zap.json`, `zap.html` and the ZAP log are in the `dast-report` artifact. A failure means no push, so CD has
+nothing to promote. Kafka isn't started and no probe records an interaction, so event publishing (#125) isn't
+covered by DAST. `InteractionEventPublisherIT` tests it in `backend` with a mocked `KafkaTemplate`, not a real broker.
+
+```bash
+API_IMAGE=crm-api:local UI_IMAGE=crm-ui:local bash scripts/dast.sh && python3 .github/scripts/check-zap-report.py
+```
+
+## Infrastructure
+
+Terraform owns the NetworkPolicies and the two PVCs; Ansible owns `crm-api-config`
+([plan](terraform-ansible-plan.md)). State is the `tfstate-default-crm` Secret, locked by a Lease.
+
+1. Actions > Capstone CD > Run workflow on `main`, action `infra-plan`. Approve the `production` deployment.
+2. Read the job summary: every resource and its action, and the plan digest. Ansible check mode shows the ConfigMap diff.
+3. Run again with `infra-apply` and that digest. A different digest means something changed since review: plan again.
+4. The apply job runs Ansible twice and fails unless the second run reports `changed=0`.
+
+Never apply from a laptop. A local plan is fine: in `infra/terraform`, copy `terraform.tfvars.example` to
+`terraform.tfvars` with the real values, set `KUBE_CONFIG_PATH` and `KUBE_CTX`, then `terraform init` and
+`terraform plan`. The plan takes the Lease lock for a moment.
 
 ## Promote
 
 Push a `v*` tag on a commit whose `main` run is green (production only, no staging: R-01). `capstone-cd.yml` then:
 
 1. finds that commit's successful `main` CI run and downloads its `artifact-manifest.json`;
-2. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
-3. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
+2. Terraform plans against the namespace and stops the release if it differs from `infra/terraform`; then Ansible
+   applies `crm-api-config` ([Infrastructure](#infrastructure));
+3. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
+4. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
    the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
-4. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
+5. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
    A pair becomes the rollback target only when its smoke passes.
 
 Gates, approvers and database rules: [release plan](release-plan.md) and [checklist](release-checklist.md).
@@ -122,8 +178,10 @@ Gates, approvers and database rules: [release plan](release-plan.md) and [checkl
 
 `scripts/smoke.sh` through the Ingress host, never `localhost`: trusted TLS, readiness, the UI, HTTP→HTTPS, anonymous
 401, wrong password 401, real login, AGENT metrics 403, ADMIN metrics 200, `CUS-1001` and `CUS-1002` reads, a
-`lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail. Until CAP-14 adds
-`GET /api/v1/customers/{id}`, the two customer reads fail, so a release can't pass smoke yet.
+`lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail.
+
+CD keeps the evidence: the deploy or rollback output (commit and both digests) and the smoke output go into one
+`release-log` artifact on the run, kept 90 days. It holds no host, password or token.
 
 ```bash
 SMOKE_URL=https://<host> SMOKE_AGENT_PASSWORD=... SMOKE_ADMIN_PASSWORD=... bash scripts/smoke.sh

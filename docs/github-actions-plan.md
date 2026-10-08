@@ -24,10 +24,10 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 | Event                        | Workflow          | Jobs                                                                         | Deploys to                                     |
 |------------------------------|-------------------|------------------------------------------------------------------------------|------------------------------------------------|
-| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build + scan)      | nothing                                        |
-| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build, scan, push) | nothing                                        |
+| `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac, image (build + scan)      | nothing                                        |
+| push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac, image (build, scan, push) | nothing                                        |
 | tag `v*`                     | `capstone-cd.yml` | promote                                                                      | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | production                                     |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | rollback, infra-plan or infra-apply                                          | production                                     |
 
 ## Jobs and Gates
 
@@ -38,10 +38,9 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55, blocking); `npm audit --omit=dev --audit-level=high` blocking with per-advisory exceptions (#52)                                    | yes: required `scan`               | Carter                    | `dependency-check-report` and `npm-audit-report` artifacts + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
 | `sast`      | PR, `main`                                            | CodeQL (`github/codeql-action` v4.38.2) on `java-kotlin` (traced `mvn compile`), `javascript-typescript` and `actions`, default query suite; results to the Security tab; `check-codeql-sarif.py` fails at security-severity 7.0+ (high/critical) or a missing/failed analysis (#53) | job blocking; required check pending | Brandon | `codeql-report` SARIF artifact, job summary, Security tab alerts; triage in `docs/security-findings.csv` |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
-| `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
-| `iac`       | PR, `main`                                            | Trivy 0.75.0 `trivy config` on `k8s/` (and `infra/` once it exists); fails at HIGH/CRITICAL not listed in `k8s/.trivyignore.yaml` (#57) | job blocking; required check pending | Brandon | `iac-report` artifact + job summary |
+| `iac`       | PR, `main`                                            | Trivy 0.75.0 `trivy config` on `k8s/` and `infra/terraform`, fails at HIGH/CRITICAL not listed in `k8s/.trivyignore.yaml` (#57); `terraform fmt -check`, `init -backend=false`, `validate`; `ansible-playbook --syntax-check`, `ansible-lint` | job blocking; required check pending | Brandon | `iac-report` artifact + job summary |
 | `image`     | PR (build + scan), `main` (push)                      | after `frontend`, `backend`, `scan`, `sast`, `secrets` and `iac` pass, build `crm-api` from the verified JAR and `crm-ui` from the verified `dist/`, Trivy-scan both on every run; on `main`, push both once to GHCR and record the pair (#49, #68)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy-api.json`, `trivy-ui.json`) and job summary                                 |
-| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against `student08`, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
+| `infra`     | manual (`infra-plan`, `infra-apply`)                  | Terraform plan with a resource summary and digest, Ansible check mode; `infra-apply` re-plans, refuses a different digest, applies, runs Ansible twice and fails unless the second run is `changed=0` | n/a | Brandon | job summary (plan table, digest, Ansible recap) |
 | `promote`   | tag `v*`                                              | find the tagged commit's green `main` run, refuse any other manifest, write Secrets, roll API then UI by digest (`scripts/release.sh`), smoke (`scripts/smoke.sh`), record the result | n/a | Brandon | CD summary, `crm-release` ConfigMap |
 | `rollback`  | manual (`workflow_dispatch`)                          | restore the last pair whose smoke passed, then smoke again; refuses with no history or when it is already running | n/a | Brandon | CD run, [rollback runbook](rollback-runbook.md) |
 
@@ -62,9 +61,9 @@ set it to 1.
 | Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` blocking in `scan` (#52), Carter |
 | SAST         | CodeQL (Java, TypeScript, Actions workflows)             | PR, `main`                           | high / critical (7.0+) | CodeQL job blocking; required-check setup pending |
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
-| IaC          | Trivy (`trivy config`) on `k8s/` and `infra/`      | PR, `main`                           | high          | blocking at HIGH/CRITICAL in the `iac` job (#57), Brandon; `infra/` joins when it exists |
+| IaC          | Trivy (`trivy config`) on `k8s/` and `infra/`      | PR, `main`                           | high          | blocking at HIGH/CRITICAL in the `iac` job (#57), Brandon |
 | Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
-| DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
+| DAST         | OWASP ZAP baseline + auth/exposure probes on the candidate pair in Actions | PR, `main`, after image scan, before push | high          | blocking in the `image` job (#69), Brandon |
 
 - **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
   Dependency-Check, CodeQL and `npm audit` have completed their initial triage and now fail CI; the IaC gate remains
@@ -166,7 +165,7 @@ credentials. Moving to a private registry later means adding a pull secret back 
 2. Dependency-Check (#55) blocks CI, merging and image publication; confirm the post-merge `main` run. CodeQL
    `sast` (#53) also gates `image`; its required-check setup remains pending. `npm audit` (#52) blocks in `scan`
    with per-advisory exceptions. Add and triage the IaC scan separately (#57).
-3. `iac-check` alongside the first Terraform / Ansible files.
+3. `iac` validates and lints `infra/` alongside the first Terraform / Ansible files.
 4. `image` with its digest and Trivy scan, and the first trivial deploy to `student08` (manual `promote`) now that
    cluster access exists (2026-10-06).
-5. `crm-ui` in the `image` job (#68), then `promote`, smoke, `rollback` and `iac-plan` by CP3. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.
+5. `crm-ui` in the `image` job (#68), then `promote`, smoke and `rollback` by CP3, then `infra-plan` / `infra-apply`. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.
