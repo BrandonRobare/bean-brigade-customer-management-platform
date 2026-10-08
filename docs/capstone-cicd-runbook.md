@@ -148,8 +148,10 @@ Gates, approvers and database rules: [release plan](release-plan.md) and [checkl
 
 `scripts/smoke.sh` through the Ingress host, never `localhost`: trusted TLS, readiness, the UI, HTTP→HTTPS, anonymous
 401, wrong password 401, real login, AGENT metrics 403, ADMIN metrics 200, `CUS-1001` and `CUS-1002` reads, a
-`lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail. Until CAP-14 adds
-`GET /api/v1/customers/{id}`, the two customer reads fail, so a release can't pass smoke yet.
+`lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail.
+
+CD keeps the evidence: the deploy or rollback output (commit and both digests) and the smoke output go into one
+`release-log` artifact on the run, kept 90 days. It holds no host, password or token.
 
 ```bash
 SMOKE_URL=https://<host> SMOKE_AGENT_PASSWORD=... SMOKE_ADMIN_PASSWORD=... bash scripts/smoke.sh

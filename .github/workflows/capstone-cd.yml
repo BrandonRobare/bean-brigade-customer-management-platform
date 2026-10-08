@@ -92,15 +92,18 @@ jobs:
           INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
           STORAGE_CLASS: ${{ vars.STORAGE_CLASS }}
         run: |
+          set -o pipefail
           export EXPECTED_REGISTRY="${EXPECTED_REGISTRY,,}"
-          bash scripts/release.sh deploy release/artifact-manifest.json
+          bash scripts/release.sh deploy release/artifact-manifest.json 2>&1 | tee release.log
       - name: Smoke
         id: smoke
         env:
           SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
           SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
           SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
-        run: bash scripts/smoke.sh
+        run: |
+          set -o pipefail
+          bash scripts/smoke.sh | tee -a release.log
       - name: Record result
         if: always() && steps.smoke.outcome != 'skipped'
         run: bash scripts/release.sh mark "${{ steps.smoke.outcome == 'success' && 'succeeded' || 'failed' }}"
@@ -115,6 +118,13 @@ jobs:
               echo "Not released: the deploy or smoke failed. The last known-good pair is unchanged; run the rollback job to restore it."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: release-log
+          path: release.log
+          retention-days: 90
+          if-no-files-found: warn
 
   # --- rollback: restore the last known-good pair, then smoke again ---
   rollback:
@@ -131,17 +141,28 @@ jobs:
           mkdir -p "$(dirname "$KUBECONFIG")"
           printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
       - name: Rollback
-        run: bash scripts/release.sh rollback
+        run: |
+          set -o pipefail
+          bash scripts/release.sh rollback 2>&1 | tee release.log
       - name: Smoke
         id: smoke
         env:
           SMOKE_URL: https://${{ vars.PLATFORM_HOSTNAME }}
           SMOKE_AGENT_PASSWORD: ${{ secrets.CRM_AGENT_PASSWORD }}
           SMOKE_ADMIN_PASSWORD: ${{ secrets.CRM_ADMIN_PASSWORD }}
-        run: bash scripts/smoke.sh
+        run: |
+          set -o pipefail
+          bash scripts/smoke.sh | tee -a release.log
       - name: Record result
         if: always() && steps.smoke.outcome != 'skipped'
         run: bash scripts/release.sh mark "${{ steps.smoke.outcome == 'success' && 'succeeded' || 'failed' }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: release-log
+          path: release.log
+          retention-days: 90
+          if-no-files-found: warn
 
   # --- infra: Terraform plan (and apply on infra-apply), Ansible check (or two real runs on infra-apply) ---
   infra:
