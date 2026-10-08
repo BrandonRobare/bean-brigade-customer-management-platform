@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: crm-kafka-topics
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 240
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: crm-kafka-topics}
+    spec:
+      serviceAccountName: crm-runtime
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: topics
+          image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
+          command: [/opt/kafka/bin/kafka-topics.sh]
+          args: [--bootstrap-server, crm-kafka:9092, --create, --if-not-exists, --topic, crm.customer.interactions.v1, --partitions, "1", --replication-factor, "1"]
+          env:
+            - {name: KAFKA_HEAP_OPTS, value: '-Xms32m -Xmx128m'}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 32Mi}

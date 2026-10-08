@@ -6,7 +6,7 @@ decision-makers: [Brandon, Bryan, Carter, Chad]
 
 # ADR 0001: Freeze the taught stack
 
-Use Angular, Spring Boot REST, PostgreSQL, Kafka, GitHub Actions and OpenShift for the capstone.
+Use Angular, Spring Boot REST, PostgreSQL, Kafka, GitHub Actions and Kubernetes (the course's k3s cluster) for the capstone.
 
 ## Context and Problem Statement
 
@@ -36,7 +36,7 @@ work and require a separate ADR.
 | API | Spring Boot 3.5, Java 21, Maven, REST/JSON, JWT/RBAC |
 | Persistence | PostgreSQL 16, Spring Data JPA, Flyway |
 | Messaging | Apache Kafka, versioned interaction events |
-| Delivery | GitHub Actions, Docker images promoted by digest, OpenShift |
+| Delivery | GitHub Actions, Docker images promoted by digest, k3s |
 
 React, Oracle, SOAP, Bitbucket Pipelines and laptop k3s are outside this baseline. Compatible security updates
 are allowed through normal review; this freezes the technology choices, not vulnerable patch versions.

@@ -6,16 +6,17 @@ each build lands is in [the environment strategy](environment-strategy.md).
 
 ## Rules
 
-1. The pipeline is the only way code reaches OpenShift. Nobody deploys from a laptop or edits the cluster by hand.
+1. The pipeline is the only way code reaches the cluster. Nobody deploys from a laptop or edits the cluster by hand.
 2. The gate order is fixed: build → verify → scan → publish → deploy.
-3. Build once. The image is built and pushed once per `main` commit, from the JAR that the same run verified. Staging
-   and production get the same digest, and nothing is rebuilt to deploy.
+3. Build once. The image is built and pushed once per `main` commit, from the JAR that the same run verified.
+   Production gets that digest, and nothing is rebuilt to deploy.
 4. Deploys never run on `pull_request` or on a push to `main`. A person starts every deploy: the course's manual
    approval (Lab 48).
-5. Secrets live in GitHub Environment secrets and OpenShift Secrets. Docs name them and never show values, and
+5. Secrets live in GitHub Environment secrets and Kubernetes Secrets. Docs name them and never show values, and
    workflows never echo them.
 6. Test and scan reports are kept as run artifacts. The ones that prove a claim are copied to `reports/` with a row in
-   `defense/evidence-index.md`.
+   `defense/evidence-index.md`. For Dependency-Check (#55), keep JSON/HTML in run artifacts and link their runs without
+   committing the reports.
 7. A red `main` gets fixed before any new feature merges. A failing check is fixed, never skipped (`-DskipTests`,
    `@Disabled`, a lowered threshold).
 
@@ -26,26 +27,29 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build + scan)      | nothing                                        |
 | push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac-check, image (build, scan, push) | nothing                                        |
 | tag `v*`                     | `capstone-cd.yml` | promote                                                                      | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | the chosen environment (staging or production) |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | iac-plan, promote or rollback                                                | production                                     |
 
 ## Jobs and Gates
 
 | Job         | Runs on                                               | What it does                                                                                                                                                                                 | Blocks merge                       | Owner                     | Evidence                                                                                                         |
 |-------------|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------|
-| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `dist/` artifact on `main`                                                                              |
-| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `mvn -B -ntp clean verify`                                                                                                        | no                                 | Brandon                   | Surefire reports artifact; JAR + `SHA256SUMS` on `main`                                                          |
-| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55), `npm audit --omit=dev --audit-level=high` (#52), `trivy config` on `openshift/` and `infra/` (#57)                                                            | report-only until triage, then yes | Carter                    | `dependency-check-report` artifact + job summary, copied to `reports/` when it proves a claim; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
-| `sast`      | PR, `main`                                            | Semgrep CE 1.178.0 with `p/java`, `p/typescript` and `p/owasp-top-ten` over the whole repo (#53)                                                                                             | report-only until triage, then yes | Brandon                   | `semgrep-report` artifact + job summary; triage in `docs/security-findings.csv`                                  |
+| `frontend`  | PR, `main`                                            | Node 22 (the brief's stack; the Lab 51 starter says 20) with npm cache, `npm ci`, `ng test --watch=false --browsers=ChromeHeadless` once specs exist, `ng build --configuration production`  | no                                 | Brandon; tests Chad       | run log; `crm-ui-dist` artifact (`dist/` + `SHA256SUMS`) for the `image` job                                                                              |
+| `backend`   | PR, `main`                                            | Java 21 (Temurin) with Maven cache, PostgreSQL 16 service, `./mvnw -B -ntp clean verify` (Maven Wrapper, 3.10.0, checksum-pinned)                                                                                                        | no                                 | Brandon                   | `test-reports` (Surefire) artifact on every run, failures included; JAR + `SHA256SUMS`                                                          |
+| `scan`      | PR, `main`                                            | Dependency-Check (Maven, #55, blocking); `npm audit --omit=dev --audit-level=high` blocking with per-advisory exceptions (#52)                                    | yes: required `scan`               | Carter                    | `dependency-check-report` and `npm-audit-report` artifacts + job summary; run links in `defense/evidence-index.md`; triage in `docs/security-findings.csv`, accepted findings with owner and expiry |
+| `sast`      | PR, `main`                                            | CodeQL (`github/codeql-action` v4.38.2) on `java-kotlin` (traced `mvn compile`), `javascript-typescript` and `actions`, default query suite; results to the Security tab; `check-codeql-sarif.py` fails at security-severity 7.0+ (high/critical) or a missing/failed analysis (#53) | job blocking; required check pending | Brandon | `codeql-report` SARIF artifact, job summary, Security tab alerts; triage in `docs/security-findings.csv` |
 | `secrets`   | PR, `main`                                            | gitleaks 8.30.1 (checksum-verified binary) over the full git history, secrets redacted (#56)                                                                                                 | yes: any leak fails                | Brandon                   | `gitleaks-report` artifact + job summary; false positives in `.gitleaksignore` with a reason                     |
 | `iac-check` | PR, `main`                                            | `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`; `ansible-playbook --syntax-check`                                                                             | no                                 | Brandon                   | run log                                                                                                          |
-| `image`     | PR (build + scan), `main` (push)                      | build the `crm-api` image from the verified JAR and scan it with Trivy on every run; on `main`, push once to GHCR and record the digest (#49)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy.json`) and job summary                                 |
-| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against the chosen project, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
-| `promote`   | tag `v*` (production), manual (staging or production) | find the digest built for the commit, `oc set image` by digest, `oc rollout status`, smoke                                                                                                   | n/a                                | Brandon (release owner)   | smoke output in the run log; GitHub Release notes                                                                |
-| `rollback`  | manual                                                | `oc rollout undo`, then rerun smoke                                                                                                                                                          | n/a                                | release owner             | run log                                                                                                          |
+| `iac`       | PR, `main`                                            | Trivy 0.75.0 `trivy config` on `k8s/` (and `infra/` once it exists); fails at HIGH/CRITICAL not listed in `k8s/.trivyignore.yaml` (#57) | job blocking; required check pending | Brandon | `iac-report` artifact + job summary |
+| `image`     | PR (build + scan), `main` (push)                      | after `frontend`, `backend`, `scan`, `sast`, `secrets` and `iac` pass, build `crm-api` from the verified JAR and `crm-ui` from the verified `dist/`, Trivy-scan both on every run; on `main`, push both once to GHCR and record the pair (#49, #68)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy-api.json`, `trivy-ui.json`) and job summary                                 |
+| `iac-plan`  | manual                                                | `terraform plan` and `ansible-playbook --check` against `student08`, from the [Terraform / Ansible plan](terraform-ansible-plan.md); apply only by the release owner, never from a PR | n/a                                | Brandon                   | plan output artifact                                                                                             |
+| `promote`   | tag `v*`                                              | find the tagged commit's green `main` run, refuse any other manifest, write Secrets, roll API then UI by digest (`scripts/release.sh`), smoke (`scripts/smoke.sh`), record the result | n/a | Brandon | CD summary, `crm-release` ConfigMap |
+| `rollback`  | manual (`workflow_dispatch`)                          | restore the last pair whose smoke passed, then smoke again; refuses with no history or when it is already running | n/a | Brandon | CD run, [rollback runbook](rollback-runbook.md) |
 
-**Required checks:** `secrets`, enforced by the `protect-main` ruleset, so that job ID must not be renamed. `scan` and
-`sast` join once the current findings are triaged. Don't put path filters on a required job: a PR that skips it waits
-on the check forever.
+**Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
+GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
+successful `frontend`, `backend`, `scan`, `sast`, `secrets` and `iac` jobs. CodeQL makes `sast` fail on high/critical findings or a failed analysis;
+its required-check setup remains separate work after confirming CI. Don't rename required job IDs or add path
+filters: a skipped required workflow can leave a PR waiting for its check.
 
 **Branch rules (`protect-main`):** PR required, 1 approval from someone other than the author, stale approvals
 dismissed on push, squash merge only, no force pushes or deletion, no bypass. The live ruleset requires 0 approvals;
@@ -55,20 +59,21 @@ set it to 1.
 
 | Scan         | Tool                                                     | When                                 | Fails at      | Status                                                                          |
 |--------------|----------------------------------------------------------|--------------------------------------|---------------|---------------------------------------------------------------------------------|
-| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check report-only (#55); `npm audit` planned (#52), Carter           |
-| SAST         | Semgrep CE (`p/java`, `p/typescript`, `p/owasp-top-ten`) | PR, `main`                           | ERROR         | report-only (#53), Brandon; CodeQL needs GitHub Code Security on a private repo |
+| Dependencies | OWASP Dependency-Check (Maven), `npm audit --omit=dev`   | PR, `main`                           | CVSS 7 / high | Dependency-Check blocking (#55), required `scan`; `npm audit` blocking in `scan` (#52), Carter |
+| SAST         | CodeQL (Java, TypeScript, Actions workflows)             | PR, `main`                           | high / critical (7.0+) | CodeQL job blocking; required-check setup pending |
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
-| IaC          | Trivy (`trivy config`) on `openshift/` and `infra/`      | PR, `main`                           | high          | planned (#57), Brandon                                                          |
+| IaC          | Trivy (`trivy config`) on `k8s/` and `infra/`      | PR, `main`                           | high          | blocking at HIGH/CRITICAL in the `iac` job (#57), Brandon; `infra/` joins when it exists |
 | Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
-| DAST         | OWASP ZAP baseline against the staging Route             | after a staging `promote`            | advisory      | not planned                                                                     |
+| DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
 
-- **Start in report-only mode.** Dependabot already lists 45 alerts on `main` (1 critical, 22 high). Gating today would
-  turn every PR red. Carter triages them first, then the gate becomes blocking, by CP3.
+- **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
+  Dependency-Check, CodeQL and `npm audit` have completed their initial triage and now fail CI; the IaC gate remains
+  separate work.
 - **Every accepted finding** gets an owner, a reason and an expiry date (Lab 40). Triage lives in
   `docs/security-findings.csv`; a Dependency-Check suppression in `dependency-check-suppressions.xml` or a Trivy ignore
-  in `backend/.trivyignore.yaml` carries the same three fields.
+  in `backend/.trivyignore.yaml` or an npm exception in `.github/npm-audit-exceptions.json` carries the same three fields.
 - **`npm audit` skips dev dependencies** (`--omit=dev`): only what ships to the browser is gated. Today that's 4 highs
-  in `@angular/*` 19.2.25, fixed only in Angular 22, so they're triaged, not force-upgraded (no `npm audit fix --force`).
+  in `@angular/*` 19.2.25, fixed only in Angular 22, so they're excepted per advisory until 2026-12-31 (`npm-001`), not force-upgraded (no `npm audit fix --force`).
 - **Dependabot alerts stay on** to watch `main` between builds. They don't gate anything; a finding they raise is
   triaged in the same CSV.
 - **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data weekly either way.
@@ -78,11 +83,30 @@ set it to 1.
   `tomcat.version` 10.1.60 and `postgresql.version` 42.7.13 fixed the reachable ones; the 13 left in Spring Framework
   6.2.19 and Log4j are false positives (module not on the classpath) or unused features accepted until 2026-12-31
   (`dc-001` to `dc-007`). Suppressions match the product's jars at that exact version, so an upgrade brings them back
-  for review. The backend gate passes, so it can go blocking once CI confirms it.
+  for review. The [2026-10-07 main scan](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37645992051/job/112876759213)
+  returned `BUILD SUCCESS` and uploaded JSON/HTML reports. Removing `continue-on-error` enforces the Maven result;
+  summaries and reports still run with `if: always()`, including on failure.
+- **Dependency-Check gate proof (2026-10-07):** the [PR #97 run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37670455515)
+  passed `scan` and `image`. Removing only the CVE-2026-47884 suppression in temporary PR #98 made its
+  [run](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37671633077) fail
+  `scan` on `spring-core-6.2.19.jar` at CVSS 9.8. `image` was skipped; the findings summary and JSON/HTML report upload
+  succeeded. GitHub reported the open, non-draft PR as blocked while required `scan` failed and required `secrets`
+  passed. [PR #98](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/pull/98) records that
+  evidence and was closed without merging; its test branch was deleted. Before #55 closes, verify a successful
+  `main` scan and image job after merging #97 and add that run to `defense/evidence-index.md`.
 - **First Semgrep run:** 0 findings in the Java and TypeScript code. `p/owasp-top-ten` also scans workflow
   YAML and found 13: a shell injection in `capstone-cd.yml` (`sg-001`) and 12 actions pinned to a tag instead of a
   commit SHA (`sg-002`). None of the three packs flags a disabled CSRF (`csrf(c -> c.disable())`), so that stays a
   manual SAST check, as in Lab 40.
+- **#53 blocking gate, 2026-10-06/07 (local):** fix the digest shell injection, pin all external actions to verified
+  commit SHAs, and schedule weekly Dependabot action updates with a 7-day cooldown. On 2026-10-07 the repo went public,
+  so the gate moved from Semgrep to CodeQL, which Module 51 (pp.18-19) names and which is free on public repos. The job
+  uploads results to the Security tab and keeps the SARIF; `.github/scripts/check-codeql-sarif.py` fails the job at
+  security-severity 7.0+ or on a missing, malformed or failed analysis, so it blocks `image` too. Medium, low and
+  non-security results are listed in the summary and don't block. There is no exception list yet: a high/critical
+  gets fixed, or a scoped, reviewed exception is added to the gate with an owner, reason and expiry in the CSV.
+  Dismissing an alert in the Security tab does not change the gate. Required-check enforcement and remote
+  failing/passing runs remain pending.
 - **First gitleaks run:** 15 commits, no leaks, so the job fails on any finding from the start, with no report-only
   phase. CI on PR #62 agreed: 17 commits on the PR run, 16 on `main`, no leaks. It's a required check, so a leak stops
   the merge. It scans the PR's whole history, so a secret deleted in a later commit still fails: rotate it, then
@@ -94,14 +118,16 @@ set it to 1.
 - **First `main` image run:** blocked at the gate, so nothing was pushed. Trivy's DB picked up CVE-2026-47884 (XsltView
   RCE in spring-webmvc 6.2.19) between the PR run and the merge. It was already accepted as `dc-006`, but only
   Dependency-Check knew that. `backend/.trivyignore.yaml` (#65) gives the gate the same entry, scoped to 6.2.19 and
-  expiring 2026-12-31; the report step still lists it in `trivy.json`.
+  expiring 2026-12-31; the report step still lists it in `trivy-api.json`.
 
 ## Artifact Identity
 
 - **JAR:** `SHA256SUMS` with the commit and the run number (Lab 43).
-- **Image:** pushed as `ghcr.io/brandonrobare/crm-api:sha-<commit>` so the `promote` job can find it. It's deployed only as
+- **Images:** pushed as `ghcr.io/brandonrobare/crm-api:sha-<commit>` and `crm-ui:sha-<commit>` so the `promote` job can find it. It's deployed only as
   `@sha256:<digest>`, and `:latest` is never used.
-- **`artifact-manifest.json`:** version, commit, run ID, JAR checksum and image digest, the shape from Lab 44.
+- **`artifact-manifest.json`:** version, commit, run ID, JAR checksum and API image digest, the shape from Lab 44, plus
+  `images.api` / `images.ui` digests, the UI `dist` checksum, `builtAt` and the run URL (M44 Exercise 2). The script
+  refuses anything that isn't a `sha256:` digest, so a tag can't end up in the release record.
 - **Tags:** `v0.1.0` at CP2, `v1.0.0` for the demo. A tag never moves; a fix gets a new version.
 
 ## Secrets
@@ -109,35 +135,38 @@ set it to 1.
 | Name               | Stored as                                                                      | Used by                                                                              |
 |--------------------|--------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
 | `GITHUB_TOKEN`     | built in, minted per run                                                       | pushing the image (if the registry is GHCR), with `packages: write` on that job only |
-| `OPENSHIFT_SERVER` | `staging` and `production` environment secret                                  | `oc login`                                                                           |
-| `OPENSHIFT_TOKEN`  | `staging` and `production` environment secret, one service account per project | `oc login`                                                                           |
+| `KUBECONFIG`       | `production` environment secret: the `student08` kubeconfig (service account token, cluster CA) | `kubectl` in `promote` and `rollback`                                |
 | `NVD_API_KEY`      | repository secret                                                              | Dependency-Check (`scan` job), optional                                              |
 
-Runtime secrets (database password, JWT keys, demo passwords) live in OpenShift Secrets, not in GitHub. See the
+Runtime secrets (database password, JWT keys, demo passwords) live in Kubernetes Secrets in `student08`, not in GitHub. See the
 environment strategy.
 
-**OIDC:** OIDC over stored credentials. We use a service account token per project, stored as an environment secret and revoked after.
+**OIDC:** Lab 51 prefers OIDC over stored credentials, but the cluster would have to trust GitHub's issuer, which needs
+admin on the instructor's cluster. So `KUBECONFIG` holds the instructor-issued token, in the `production` environment
+only (R-07).
 
-**SAST:** Semgrep CE (#53). CodeQL code scanning on a private personal repo needs GitHub Code Security, which Pro
-doesn't include. The Module 40 deck (p.29) lists Semgrep with SonarQube and CodeQL as SAST tools, and Lab 51 leaves the
-tool to the instructor. If the repo goes public, CodeQL can run beside it.
+**SAST:** CodeQL (#53), since the repo went public on 2026-10-07. Module 51 (p.18) and Lab 51 Step 3 require a SAST gate
+that can fail the job; p.19 shows CodeQL's init, build, analyze flow, which this job follows. Semgrep CE was the
+private-repo choice (code scanning on a private personal repo needs GitHub Code Security) and its first run is kept as
+evidence of `sg-001`/`sg-002`. Leave GitHub's code scanning *default setup* off: it conflicts with this advanced-setup
+workflow. Source: [CodeQL action](https://github.com/github/codeql-action), [SARIF security-severity](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning).
 
 **Registry:** GHCR (#49). The `image` job pushes with the built-in `GITHUB_TOKEN` (`packages: write` on that job only),
-so there's no registry secret. The package is private like the repo, so OpenShift pulls it with a pull secret (a token
-with `read:packages`) in each project. Moving to the OpenShift registry or ECR later changes only the push step.
+so there's no registry secret in GitHub. Both packages are public, like the repo, so the cluster pulls them without
+credentials. Moving to a private registry later means adding a pull secret back to the `crm-runtime` ServiceAccount.
 
 ## Open
 
-1. **Frontend image:** nginx, or served by `crm-api`. Chad decides, with Brandon; it's tied to the API URL rule in the
-   environment strategy.
-2. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
+1. **Kafka in tests:** `@EmbeddedKafka` or Testcontainers. Carter decides; it needs an ADR, and CI adds no Kafka service
    until then.
 
 ## Order
 
 1. Real `frontend` and `backend` jobs (#39) for CP1. They go green once `InteractionService` merges.
-2. `scan` (#55, #52, #53) in report-only
+2. Dependency-Check (#55) blocks CI, merging and image publication; confirm the post-merge `main` run. CodeQL
+   `sast` (#53) also gates `image`; its required-check setup remains pending. `npm audit` (#52) blocks in `scan`
+   with per-advisory exceptions. Add and triage the IaC scan separately (#57).
 3. `iac-check` alongside the first Terraform / Ansible files.
-4. `image` with its digest and Trivy scan, and the first trivial staging deploy (manual `promote`) as soon as `oc`
-   access exists.
-5. `promote`, smoke, `rollback` and `iac-plan` by CP3. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.
+4. `image` with its digest and Trivy scan, and the first trivial deploy to `student08` (manual `promote`) now that
+   cluster access exists (2026-10-06).
+5. `crm-ui` in the `image` job (#68), then `promote`, smoke, `rollback` and `iac-plan` by CP3. Tag `v0.1.0` at CP2 and `v1.0.0` for the demo.

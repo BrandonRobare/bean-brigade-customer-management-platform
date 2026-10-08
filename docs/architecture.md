@@ -18,15 +18,15 @@ correlation ID `lab-request-001`.
 
 ## Stack
 
-| Layer         | Technology                                                                                     |
-|---------------|------------------------------------------------------------------------------------------------|
-| UI            | Angular 19, TypeScript, signals + RxJS, `HttpClient` with functional interceptors              |
-| API           | Spring Boot 3.5 on Java 21 (Maven), REST / JSON, Bean Validation, Problem Details errors       |
-| Security      | Spring Security OAuth2 resource server, self-issued RS256 JWTs, roles AGENT / ADMIN (ADR 0006) |
-| Data          | PostgreSQL 16, Spring Data JPA, Flyway migrations                                              |
-| Messaging     | Apache Kafka via `spring-kafka`, versioned events                                              |
-| Delivery      | GitHub Actions (build, test, SAST), Docker images, OpenShift (Deployment, Service, Route)      |
-| Observability | Spring Boot Actuator (health, metrics), SLF4J logs with the correlation ID in the MDC          |
+| Layer         | Technology                                                                                           |
+|---------------|------------------------------------------------------------------------------------------------------|
+| UI            | Angular 19, TypeScript, signals + RxJS, `HttpClient` with functional interceptors                    |
+| API           | Spring Boot 3.5 on Java 21 (Maven), REST / JSON, Bean Validation, Problem Details errors             |
+| Security      | Spring Security OAuth2 resource server, self-issued RS256 JWTs, roles AGENT / ADMIN (ADR 0006)       |
+| Data          | PostgreSQL 16, Spring Data JPA, Flyway migrations                                                    |
+| Messaging     | Apache Kafka via `spring-kafka`, versioned events                                                    |
+| Delivery      | GitHub Actions (build, test, SAST), Docker images, k3s course cluster (Deployment, Service, Ingress) |
+| Observability | Spring Boot Actuator (health, metrics), SLF4J logs with the correlation ID in the MDC                |
 
 ## Non-Goals
 
@@ -45,8 +45,8 @@ flowchart LR
     team(["Bean Brigade developers"])
     crm["Northstar CRM<br/>search customers, view profiles,<br/>record interactions"]
     gh["GitHub<br/>repo, Actions, board"]
-    reg["Container registry<br/>(open: GHCR, OpenShift internal or ECR)"]
-    ocp["OpenShift cluster<br/>(instructor-hosted)"]
+    reg["GHCR<br/>crm-api, crm-ui images"]
+    ocp["k3s cluster<br/>(instructor-hosted, namespace student08)"]
     agent -->|" browser, HTTPS "| crm
     admin -->|" browser, HTTPS "| crm
     team -->|" commits, PRs "| gh
@@ -63,39 +63,44 @@ The deployable parts and how they talk.
 ```mermaid
 flowchart LR
     subgraph browser["Agent's browser"]
-        ui["crm-ui<br/>Angular SPA<br/>guard + interceptors"]
+        ui["Angular SPA<br/>guard + interceptors"]
     end
-    subgraph cluster["OpenShift project (locally: compose + ng serve)"]
+    subgraph cluster["k3s namespace student08 (locally: compose + ng serve)"]
+        ing["Ingress<br/>/api → crm-api, / → crm-ui"]
+        web["crm-ui<br/>nginx serving the Angular build"]
         api["crm-api<br/>Spring Boot<br/>security chain, controllers,<br/>services, repositories,<br/>Kafka producer + consumer, Actuator"]
         db[("PostgreSQL 16<br/>crm schema, Flyway")]
         kafka[["Kafka<br/>crm.customer.interactions.v1<br/>+ dead-letter topic"]]
     end
 
-    ui -->|" REST / JSON over HTTPS<br/>Authorization: Bearer JWT<br/>X-Correlation-ID "| api
+    ui -->|" one host "| ing
+    ing -->|" / "| web
+    ing -->|" /api: REST / JSON<br/>Authorization: Bearer JWT<br/>X-Correlation-ID "| api
     api -->|" JDBC as crm_app "| db
     api -->|" publish after commit "| kafka
     kafka -->|" consume, dedupe on eventId "| api
 ```
 
-| Container  | Technology      | Responsibility                                                                | Runs locally as                         |
-|------------|-----------------|-------------------------------------------------------------------------------|-----------------------------------------|
-| `crm-ui`   | Angular 19      | agent screens, calls the API; never decides access                            | `npx ng serve` on :4200                 |
-| `crm-api`  | Spring Boot 3.5 | authentication and authorization, business rules, persistence, events, health | `mvn spring-boot:run` on :8080          |
-| PostgreSQL | 16              | customers, interactions, processed events                                     | `docker compose` on :5432               |
-| Kafka      | broker + topics | interaction events, dead-letter topic                                         | `docker compose` on :9092 (to be added) |
+| Container  | Technology        | Responsibility                                                                | Runs locally as                         |
+|------------|-------------------|-------------------------------------------------------------------------------|-----------------------------------------|
+| `crm-ui`   | Angular 19, nginx | agent screens, calls the API; never decides access                            | `npx ng serve` on :4200                 |
+| `crm-api`  | Spring Boot 3.5   | authentication and authorization, business rules, persistence, events, health | `mvn spring-boot:run` on :8080          |
+| PostgreSQL | 16                | customers, interactions, processed events                                     | `docker compose` on :5432               |
+| Kafka      | broker + topics   | interaction events, dead-letter topic                                         | `docker compose` on :9092 (to be added) |
 
-How `crm-ui` is served in the cluster is **open**: its own nginx image, or static files served by `crm-api`.
+In the cluster, `crm-ui` is its own nginx image, and the Ingress sends `/api` to `crm-api` and everything else to
+`crm-ui`, so the UI and API share one origin (ADR 0007, #68). PostgreSQL runs as `crm-postgres`.
 
 ## Trust Boundaries
 
 | Boundary         | Rule                                                                                                                                                                                                                                                                                      |
 |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Browser → API    | **The API is the security boundary, not Angular.** Anyone can call the API directly, so every `/api/**` request is authenticated (JWT) and authorized by role on the server. The Angular guard only hides screens that would fail anyway. CORS allows the UI's origin but isn't security. |
-| Token signing    | Only the token endpoint uses the private signing key, which lives in an OpenShift Secret (locally, a `.env` path to a gitignored file). Checking a token needs only the public key.                                                                                                       |
-| API → PostgreSQL | The app connects as a least-privilege `crm_app` login with data access only (planned in `V2`); Flyway migrates as the schema owner. Credentials come from environment variables or an OpenShift Secret, never from Git.                                                                   |
+| Token signing    | Only the token endpoint uses the private signing key, which lives in a Kubernetes Secret (locally, a `.env` path to a gitignored file). Checking a token needs only the public key.                                                                                                       |
+| API → PostgreSQL | The app connects as a least-privilege `crm_app` login with data access only (planned in `V2`); Flyway migrates as the schema owner. Credentials come from environment variables or a Kubernetes Secret, never from Git.                                                                   |
 | API → Kafka      | Internal network only. Events carry IDs, types and the correlation ID, never the interaction's free-text summary.                                                                                                                                                                         |
 | GitHub → cluster | Only the pipeline deploys. Deploy credentials are GitHub Environment secrets; the production environment accepts only `v*` tags.                                                                                                                                                          |
-| Actuator         | Liveness and readiness are open for the OpenShift probes; `metrics` is ADMIN only; nothing else (`env`, `heapdump`, `info`) is exposed (#54).                                                                                                                                             |
+| Actuator         | Liveness and readiness are open for the Kubernetes probes; `metrics` is ADMIN only; nothing else (`env`, `heapdump`, `info`) is exposed (#54).                                                                                                                                            |
 
 ## Runtime Path
 
@@ -235,14 +240,14 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    pr["PR to main"] --> ci["CI<br/>frontend: npm ci, tests, ng build<br/>backend: mvn verify on PostgreSQL<br/>scan: Dependency-Check, npm audit, CodeQL"]
+    pr["PR to main"] --> ci["CI<br/>frontend: npm ci, tests, ng build<br/>backend: mvn verify on PostgreSQL<br/>scan: Dependency-Check, npm audit, Semgrep"]
     ci --> merge["review + squash merge"]
     merge --> img["build image once<br/>record sha256 digest"]
-    img --> reg["registry (open)"]
+    img --> reg["GHCR, public"]
     reg --> tag["tag v*"]
-    tag --> cd["CD: deploy the digest<br/>to OpenShift"]
-    cd --> smoke["smoke through the Route:<br/>readiness, then CUS-1001"]
-    smoke -->|" fails "| undo["oc rollout undo<br/>then fix in code, new PR"]
+    tag --> cd["CD: deploy the digest<br/>to student08 (k3s)"]
+    cd --> smoke["smoke through the Ingress:<br/>readiness, then CUS-1001"]
+    smoke -->|" fails "| undo["kubectl rollout undo<br/>then fix in code, new PR"]
 ```
 
 - The pipeline is the only way changes reach the cluster; nobody edits the cluster by hand.

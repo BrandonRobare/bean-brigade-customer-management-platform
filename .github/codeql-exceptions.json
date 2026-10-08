@@ -1,0 +1,10 @@
+[
+  {
+    "id": "cq-001",
+    "rule": "java/spring-disabled-csrf-protection",
+    "path": "backend/src/main/java/com/northstar/crm/security/SecurityConfiguration.java",
+    "until": "2027-04-05",
+    "owner": "brandon",
+    "reason": "Stateless API: the JWT travels in the Authorization header, which browsers never attach on their own, and the production chain is SessionCreationPolicy.STATELESS with no cookies. The dev chain only exists in the dev profile."
+  }
+]
