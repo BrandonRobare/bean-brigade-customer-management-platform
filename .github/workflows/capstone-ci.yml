@@ -17,21 +17,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # --- frontend: npm ci + production build ---
+  # --- frontend: npm ci + production build, dist + checksum for the image job ---
   frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npx ng build --configuration=production
+      - name: Checksum dist
+        working-directory: frontend/dist
+        run: find lab50-crm-ui -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: crm-ui-dist
+          path: frontend/dist/
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
   # --- backend: mvn verify against postgres, JAR + checksum for the image job ---
   backend:
@@ -55,22 +63,28 @@ jobs:
       SPRING_DATASOURCE_USERNAME: crm
       SPRING_DATASOURCE_PASSWORD: change-me
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
       - name: Verify
-        run: mvn -B -ntp clean verify
+        run: ./mvnw -B -ntp clean verify
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: test-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: warn
       - name: Checksum JAR
         working-directory: backend/target
         run: |
           sha256sum *.jar > SHA256SUMS
           echo "commit=${GITHUB_SHA}" >> SHA256SUMS
           echo "run=${GITHUB_RUN_NUMBER}" >> SHA256SUMS
-          echo "version=$(mvn -B -q -f ../pom.xml help:evaluate -Dexpression=project.version -DforceStdout)" >> SHA256SUMS
-      - uses: actions/upload-artifact@v7
+          echo "version=$(../mvnw -B -q -f ../pom.xml help:evaluate -Dexpression=project.version -DforceStdout)" >> SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: crm-api-jar
           path: |
@@ -78,15 +92,15 @@ jobs:
             backend/target/SHA256SUMS
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
-  # --- scan: OWASP Dependency-Check on maven deps ---
+  # --- scan: OWASP Dependency-Check on maven deps, npm audit on production npm deps; both block at high ---
   scan:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: temurin
           java-version: "21"
@@ -94,18 +108,17 @@ jobs:
       - name: NVD cache week
         id: nvd-week
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.dependency-check-data
           key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
           restore-keys: dependency-check-${{ runner.os }}-
       - name: Dependency-Check
-        continue-on-error: true
         env:
           NVD_SECRET: ${{ secrets.NVD_API_KEY }}
         run: |
           if [ -n "$NVD_SECRET" ]; then export NVD_API_KEY="$NVD_SECRET"; fi
-          mvn -B -ntp -Psecurity-scan dependency-check:check -DdataDirectory="$HOME/.dependency-check-data"
+          ./mvnw -B -ntp -Psecurity-scan dependency-check:check -DdataDirectory="$HOME/.dependency-check-data"
       - name: Findings summary
         if: always()
         run: |
@@ -124,50 +137,66 @@ jobs:
               echo "No report: the scan didn't finish. Check the Dependency-Check step log."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: dependency-check-report
           path: backend/target/dependency-check-report.*
           if-no-files-found: warn
-
-  # --- sast: Semgrep CE, java + typescript + owasp top 10 ---
-  sast:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - run: pipx install semgrep==1.178.0
-      - name: Semgrep
-        run: semgrep scan --config p/java --config p/typescript --config p/owasp-top-ten --metrics=off --json --output semgrep.json
-      - name: Findings summary
+      - name: npm audit
         if: always()
-        run: |
-          {
-            echo "### Semgrep"
-            if [ -f semgrep.json ]; then
-              echo "| Severity | Findings |"
-              echo "|---|---|"
-              jq -r '[.results[].extra.severity]
-                | if length == 0 then "| none | 0 |"
-                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' semgrep.json
-              echo
-              echo "Triage in \`docs/security-findings.csv\`. Full report in the \`semgrep-report\` artifact."
-            else
-              echo "No report: the scan didn't finish. Check the Semgrep step log."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high --json > npm-audit.json || true
+      - name: npm audit gate
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/check-npm-audit.py frontend/npm-audit.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: semgrep-report
-          path: semgrep.json
+          name: npm-audit-report
+          path: frontend/npm-audit.json
+          if-no-files-found: warn
+
+  # --- sast: CodeQL on java, typescript and the workflows; results in the Security tab, fails at high/critical ---
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test CI scripts
+        run: python3 -B -m unittest discover -s .github/scripts/tests -v
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: java-kotlin, javascript-typescript, actions
+      - name: Build backend for CodeQL
+        working-directory: backend
+        run: ./mvnw -B -ntp -DskipTests compile
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          output: codeql-results
+      - name: CodeQL gate
+        if: always()
+        run: python3 .github/scripts/check-codeql-sarif.py codeql-results/*.sarif >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: codeql-report
+          path: codeql-results/
           if-no-files-found: warn
 
   # --- secrets: gitleaks over the full git history ---
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - name: Install gitleaks
@@ -195,37 +224,85 @@ jobs:
               echo "No report: the scan didn't finish. Check the Gitleaks step log."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: gitleaks-report
           path: gitleaks.json
           if-no-files-found: warn
 
-  # --- image: build from the verified JAR and Trivy scan on every run, push to GHCR on main only ---
+  # --- iac: Trivy misconfiguration scan of the Kubernetes manifests, fails at high/critical ---
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Trivy
+        run: |
+          curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz
+          echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy_0.75.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
+      - name: Trivy config report
+        run: ./trivy config --quiet --format json --output trivy-config.json k8s
+      - name: Trivy config gate
+        run: ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile k8s/.trivyignore.yaml k8s
+      - name: Findings summary
+        if: always()
+        run: |
+          {
+            echo "### Kubernetes manifests (Trivy config)"
+            if [ -f trivy-config.json ]; then
+              echo "| Severity | Findings |"
+              echo "|---|---|"
+              jq -r '[.Results[]?.Misconfigurations[]?.Severity]
+                | if length == 0 then "| none | 0 |"
+                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy-config.json
+              echo
+              echo "Fails at HIGH/CRITICAL not triaged in \`k8s/.trivyignore.yaml\`. Full report in the \`iac-report\` artifact."
+            else
+              echo "No report: the scan didn't finish. Check the Trivy config step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: iac-report
+          path: trivy-config.json
+          if-no-files-found: warn
+
+  # --- image: build API + UI from the verified JAR and dist, Trivy scan on every run, push the pair to GHCR on main only ---
   image:
-    needs: [backend]
+    needs: [frontend, backend, scan, sast, secrets, iac]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: crm-api-jar
           path: backend/target
-      - name: Verify JAR checksum
-        working-directory: backend/target
-        run: grep '\.jar$' SHA256SUMS | sha256sum -c -
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: crm-ui-dist
+          path: frontend/dist
+      - name: Verify checksums
+        run: |
+          (cd backend/target && grep '\.jar$' SHA256SUMS | sha256sum -c -)
+          cd frontend/dist
+          sha256sum -c --quiet SHA256SUMS
+          diff <(find lab50-crm-ui -type f | sort) <(awk '{print $2}' SHA256SUMS | sort)
       - name: Build
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/crm-api"
-          echo "IMAGE=$image" >> "$GITHUB_ENV"
-          docker build \
-            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --label org.opencontainers.image.revision="$GITHUB_SHA" \
-            -t "$image:sha-$GITHUB_SHA" backend
+          owner="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          echo "API_IMAGE=$owner/crm-api:sha-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "UI_IMAGE=$owner/crm-ui:sha-$GITHUB_SHA" >> "$GITHUB_ENV"
+          for app in api:backend ui:frontend; do
+            docker build \
+              --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              --label org.opencontainers.image.revision="$GITHUB_SHA" \
+              -t "$owner/crm-${app%%:*}:sha-$GITHUB_SHA" "${app#*:}"
+          done
       - name: Install Trivy
         run: |
           curl -sSfLO https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz
@@ -234,66 +311,65 @@ jobs:
       - name: Trivy DB cache day
         id: trivy-day
         run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.trivy-day.outputs.day }}
           restore-keys: trivy-db-
       - name: Trivy report
-        run: ./trivy image --quiet --format json --output trivy.json "$IMAGE:sha-$GITHUB_SHA"
+        run: |
+          ./trivy image --quiet --format json --output trivy-api.json "$API_IMAGE"
+          ./trivy image --quiet --skip-db-update --format json --output trivy-ui.json "$UI_IMAGE"
       - name: Trivy gate
-        run: ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 --ignorefile backend/.trivyignore.yaml "$IMAGE:sha-$GITHUB_SHA"
+        run: |
+          ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 --ignorefile backend/.trivyignore.yaml "$API_IMAGE"
+          ./trivy image --quiet --skip-db-update --severity CRITICAL --exit-code 1 "$UI_IMAGE"
       - name: Push
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "$IMAGE:sha-$GITHUB_SHA"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$GITHUB_SHA" | cut -d@ -f2)
-          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+          docker push "$API_IMAGE"
+          docker push "$UI_IMAGE"
+          echo "API_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$API_IMAGE" | cut -d@ -f2)" >> "$GITHUB_ENV"
+          echo "UI_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "$UI_IMAGE" | cut -d@ -f2)" >> "$GITHUB_ENV"
       - name: Manifest
         if: github.ref == 'refs/heads/main'
         run: |
-          sums=backend/target/SHA256SUMS
-          jq -n \
-            --arg version "$(sed -n 's/^version=//p' $sums)" \
-            --arg commit "$GITHUB_SHA" \
-            --arg run "$GITHUB_RUN_ID" \
-            --arg jar "$(awk '/\.jar$/ {print $1}' $sums)" \
-            --arg repo "$IMAGE" \
-            --arg digest "$DIGEST" \
-            '{application: "crm-api", version: $version, gitCommit: $commit, runId: $run, jarSha256: $jar,
-              imageRepository: $repo, imageDigest: $digest, builtBy: "capstone-ci"}' > artifact-manifest.json
+          API_REPO="${API_IMAGE%:*}" UI_REPO="${UI_IMAGE%:*}" \
+            bash .github/scripts/write-artifact-manifest.sh > artifact-manifest.json
           cat artifact-manifest.json
       - name: Summary
         if: always()
         run: |
           {
-            echo "### Image"
-            if [ -n "$DIGEST" ]; then
-              echo "Pushed \`$IMAGE@$DIGEST\`. Deploy by this digest, never by tag."
+            echo "### Images"
+            if [ -s artifact-manifest.json ]; then
+              echo "Pushed \`${API_IMAGE%:*}@$API_DIGEST\` and \`${UI_IMAGE%:*}@$UI_DIGEST\`. Deploy this pair by digest, never by tag."
             elif [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "PR run: not pushed, only \`main\` pushes."
             else
-              echo "Not pushed. Check the Trivy gate and Push steps."
+              echo "Not pushed. Check the Trivy gate, Push and Manifest steps."
             fi
-            if [ -f trivy.json ]; then
-              echo
-              echo "| Severity | Findings |"
-              echo "|---|---|"
-              jq -r '[.Results[]?.Vulnerabilities[]?.Severity]
-                | if length == 0 then "| none | 0 |"
-                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy.json
-              echo
-              echo "Fails at CRITICAL not triaged in \`backend/.trivyignore.yaml\`. Full report in the \`image-report\` artifact."
-            fi
+            for app in api ui; do
+              if [ -f "trivy-$app.json" ]; then
+                echo
+                echo "| crm-$app severity | Findings |"
+                echo "|---|---|"
+                jq -r '[.Results[]?.Vulnerabilities[]?.Severity]
+                  | if length == 0 then "| none | 0 |"
+                    else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' "trivy-$app.json"
+              fi
+            done
+            echo
+            echo "Fails at CRITICAL not triaged in \`backend/.trivyignore.yaml\`. Full reports in the \`image-report\` artifact."
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: image-report
           path: |
             artifact-manifest.json
-            trivy.json
+            trivy-*.json
           if-no-files-found: warn

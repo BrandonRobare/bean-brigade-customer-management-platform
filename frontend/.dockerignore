@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!nginx.conf
+!dist/
+!dist/lab50-crm-ui/
+!dist/lab50-crm-ui/browser/
+!dist/lab50-crm-ui/browser/**

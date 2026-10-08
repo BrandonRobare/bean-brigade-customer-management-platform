@@ -1,0 +1,44 @@
+[
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-39pv-4j6c-2g6v",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/common HttpTransferCache cache key. Client-rendered SPA with no SSR or hydration, so HttpTransferCache never runs. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  },
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-jhpw-976m-542j",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/common HttpTransferCache cache-key ambiguity. No SSR or hydration, so HttpTransferCache never runs. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  },
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-48r7-hpm6-gfxm",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/common formatDate OOM. No formatDate or DatePipe in frontend/src. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  },
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-jj27-h5hq-8x99",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/core and @angular/compiler i18n event-handler XSS. No i18n attributes or localize in the app. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  },
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-rgjc-h3x7-9mwg",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/core hydration DOM clobbering and response-cache poisoning. No SSR or provideClientHydration. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  },
+  {
+    "id": "npm-001",
+    "advisory": "GHSA-ff3f-86qr-9cv3",
+    "until": "2026-12-31",
+    "owner": "brandon",
+    "reason": "@angular/router SSR DoS via matrix parameters. Server-side rendering only; the app is served as static files by nginx. Fix is Angular 22; ADR 0001 freezes Angular 19."
+  }
+]
