@@ -57,6 +57,23 @@ jobs:
           umask 077
           mkdir -p "$(dirname "$KUBECONFIG")"
           printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+      - name: Install Terraform and Ansible
+        run: bash scripts/install-iac-tools.sh
+      - name: Infrastructure matches this commit
+        working-directory: infra/terraform
+        env:
+          TF_VAR_ingress_namespace: ${{ vars.INGRESS_NAMESPACE }}
+          TF_VAR_storage_class: ${{ vars.STORAGE_CLASS }}
+        run: |
+          terraform init -input=false > /dev/null
+          status=0
+          terraform plan -input=false -lock-timeout=120s -detailed-exitcode > /dev/null || status=$?
+          if [ "$status" -eq 2 ]; then
+            echo "::error::The namespace doesn't match infra/terraform. Run CD with infra-plan, review it, then infra-apply."
+          fi
+          exit "$status"
+      - name: Configure
+        run: ansible-playbook -i infra/ansible/inventory.yml -e crm_context="$(kubectl config current-context)" infra/ansible/configure.yml
       - name: Secrets
         env:
           CRM_DB_PASSWORD: ${{ secrets.CRM_DB_PASSWORD }}
@@ -74,7 +91,6 @@ jobs:
           PLATFORM_HOSTNAME: ${{ vars.PLATFORM_HOSTNAME }}
           INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
           STORAGE_CLASS: ${{ vars.STORAGE_CLASS }}
-          INGRESS_NAMESPACE: ${{ vars.INGRESS_NAMESPACE }}
         run: |
           export EXPECTED_REGISTRY="${EXPECTED_REGISTRY,,}"
           bash scripts/release.sh deploy release/artifact-manifest.json

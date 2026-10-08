@@ -62,8 +62,6 @@ Live (CD runs):
 ## Residual risks
 
 - R-14: state is readable by anyone with the namespace token. Owner Brandon, until 2026-10-12.
-- Until the release bundle stops shipping them, the bundle and Terraform both write the same NetworkPolicies;
-  don't change them in between.
 
 ## Approval
 

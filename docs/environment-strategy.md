@@ -56,7 +56,8 @@ demo passwords. There are no fallback defaults.
 
 ## Where Config Lives
 
-- **Non-secret settings:** ConfigMap `crm-api-config` in `student08`, passed to the Deployment as env vars.
+- **Non-secret settings:** ConfigMap `crm-api-config` in `student08`, set by Ansible from `infra/ansible/group_vars/all.yml`
+  on every release and passed to the Deployment as env vars.
 - **Secrets:** Kubernetes Secrets `crm-db`, `crm-auth`, `crm-jwt` and, if we supply the certificate, `crm-tls`.
   `scripts/release.sh secrets` writes them from the `production` environment secrets on every release, so nobody
   creates them by hand. The Terraform / Ansible plan may take this over.

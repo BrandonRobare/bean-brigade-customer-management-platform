@@ -134,10 +134,12 @@ Never apply from a laptop. A local plan is fine: in `infra/terraform`, copy `ter
 Push a `v*` tag on a commit whose `main` run is green (production only, no staging: R-01). `capstone-cd.yml` then:
 
 1. finds that commit's successful `main` CI run and downloads its `artifact-manifest.json`;
-2. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
-3. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
+2. Terraform plans against the namespace and stops the release if it differs from `infra/terraform`; then Ansible
+   applies `crm-api-config` ([Infrastructure](#infrastructure));
+3. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
+4. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
    the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
-4. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
+5. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
    A pair becomes the rollback target only when its smoke passes.
 
 Gates, approvers and database rules: [release plan](release-plan.md) and [checklist](release-checklist.md).

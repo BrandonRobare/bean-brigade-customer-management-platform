@@ -9,6 +9,8 @@ Terraform uses the `hashicorp/kubernetes` provider to define NetworkPolicies and
 Ansible uses `kubernetes.core.k8s` in `infra/ansible/configure.yml` to apply non-secret ConfigMaps.
 Deployments, Services, Ingress and runtime Secrets are applied by the release workflow. Database schema changes
 stay in Flyway migrations. Keep these definitions separate so one apply does not overwrite another's changes.
+The release bundle in `openshift/` no longer contains the NetworkPolicies or `crm-api-config`; a test in
+`.github/scripts/tests/test_bundle_ownership.py` keeps it that way.
 
 The application scope excludes namespace creation, cluster quotas, nodes, storage classes and managed cloud services.
 PostgreSQL remains on the internal network; it is not exposed through a public Service or Ingress.
@@ -67,7 +69,8 @@ explains the limits of `no_log`.
    Approve by running CD with `infra-apply` and that digest. It plans again and refuses if the digest differs, so
    drift or a new commit means a new review.
 4. **Apply and deploy.** `infra-apply` applies the plan and runs Ansible twice; the second run must report
-   `changed=0`. A `v*` tag then deploys the image digest already verified by CI, without rebuilding the application.
+   `changed=0`. A `v*` tag then checks that the namespace matches `infra/terraform`, runs Ansible, and deploys the
+   image digest already verified by CI, without rebuilding the application.
    A failed stage stops subsequent stages; inspect partial changes before retrying.
 5. **Verify and record.** Check rollout and readiness, run authenticated and denied-path smoke tests, and retain
    scrubbed plan summaries, Ansible recaps, commit/run IDs, image digests and rollback results in the
