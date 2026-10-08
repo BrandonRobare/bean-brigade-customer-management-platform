@@ -172,7 +172,15 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Test CI scripts
-        run: python3 -B -m unittest discover -s .github/scripts/tests -v
+        run: |
+          set -o pipefail
+          python3 -B -m unittest discover -s .github/scripts/tests -v 2>&1 | tee ci-script-tests.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: ci-script-tests
+          path: ci-script-tests.txt
+          if-no-files-found: warn
       - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: java-kotlin, javascript-typescript, actions

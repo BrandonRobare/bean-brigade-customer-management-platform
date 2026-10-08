@@ -69,7 +69,8 @@ CodeQL analyzes Java (traced `mvn compile`), TypeScript and the workflow files o
 Security tab and the `codeql-report` artifact keeps the SARIF. `python3 .github/scripts/check-codeql-sarif.py
 codeql-results/*.sarif` writes a severity table to the job summary and fails at security-severity 7.0+ (high/critical)
 or a missing, malformed or failed analysis. Medium, low and non-security results are listed and don't block. The job
-runs the CI script tests first; the gate and artifact run with `if: always()`.
+runs the CI script tests first and keeps their output in the `ci-script-tests` artifact; the gate and artifacts run
+with `if: always()`.
 
 Run the gate tests locally from the repository root (Python 3, no packages):
 
