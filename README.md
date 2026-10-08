@@ -23,7 +23,7 @@ Requires Java 21, Maven, Node 22 and Docker.
 docker compose up -d
 ```
 
-Copy `.env.example` to `.env`, set `DEMO_AGENT_PASSWORD` and `DEMO_ADMIN_PASSWORD`, then make the signing keys:
+Copy `.env.example` to `.env` and change the two `DEMO_` passwords to your own, then make the signing keys:
 
 ```bash
 mkdir -p backend/.keys
