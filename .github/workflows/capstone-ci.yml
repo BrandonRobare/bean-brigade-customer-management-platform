@@ -242,9 +242,9 @@ jobs:
           echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy_0.75.0_Linux-64bit.tar.gz" | sha256sum -c -
           tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
       - name: Trivy config report
-        run: ./trivy config --quiet --format json --output trivy-config.json openshift
+        run: ./trivy config --quiet --format json --output trivy-config.json k8s
       - name: Trivy config gate
-        run: ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile openshift/.trivyignore.yaml openshift
+        run: ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile k8s/.trivyignore.yaml k8s
       - name: Findings summary
         if: always()
         run: |
@@ -257,7 +257,7 @@ jobs:
                 | if length == 0 then "| none | 0 |"
                   else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy-config.json
               echo
-              echo "Fails at HIGH/CRITICAL not triaged in \`openshift/.trivyignore.yaml\`. Full report in the \`iac-report\` artifact."
+              echo "Fails at HIGH/CRITICAL not triaged in \`k8s/.trivyignore.yaml\`. Full report in the \`iac-report\` artifact."
             else
               echo "No report: the scan didn't finish. Check the Trivy config step log."
             fi

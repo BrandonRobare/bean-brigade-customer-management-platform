@@ -3,7 +3,7 @@
 ## Stack
 
 Angular + Spring Boot + PostgreSQL + GitHub Actions → the course's k3s cluster, namespace `student08` (`kubectl`).  
-Not Bitbucket. The brief says OpenShift; see R-02 in `docs/risk-register.md`.
+Not Bitbucket. Adel confirmed k3s for the deploy on 2026-10-08 (R-02 in `docs/risk-register.md`).
 
 ## Secret names only
 
