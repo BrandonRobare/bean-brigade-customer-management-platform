@@ -231,7 +231,7 @@ jobs:
           path: gitleaks.json
           if-no-files-found: warn
 
-  # --- iac: Trivy misconfiguration scan of the Kubernetes manifests, fails at high/critical ---
+  # --- iac: Trivy misconfiguration scan of the manifests and Terraform, Terraform validate, Ansible syntax and lint ---
   iac:
     runs-on: ubuntu-latest
     steps:
@@ -242,31 +242,51 @@ jobs:
           echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy_0.75.0_Linux-64bit.tar.gz" | sha256sum -c -
           tar -xzf trivy_0.75.0_Linux-64bit.tar.gz trivy
       - name: Trivy config report
-        run: ./trivy config --quiet --format json --output trivy-config.json openshift
+        run: |
+          ./trivy config --quiet --format json --output trivy-config.json openshift
+          ./trivy config --quiet --format json --output trivy-terraform.json infra/terraform
       - name: Trivy config gate
-        run: ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile openshift/.trivyignore.yaml openshift
+        run: |
+          ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 --ignorefile openshift/.trivyignore.yaml openshift
+          ./trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 infra/terraform
+      - name: Install Terraform and Ansible
+        run: bash scripts/install-iac-tools.sh
+      - name: Terraform validate
+        working-directory: infra/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: Ansible syntax and lint
+        working-directory: infra/ansible
+        run: |
+          ansible-playbook -i inventory.yml --syntax-check configure.yml
+          ansible-lint configure.yml
       - name: Findings summary
         if: always()
         run: |
           {
-            echo "### Kubernetes manifests (Trivy config)"
-            if [ -f trivy-config.json ]; then
-              echo "| Severity | Findings |"
-              echo "|---|---|"
-              jq -r '[.Results[]?.Misconfigurations[]?.Severity]
-                | if length == 0 then "| none | 0 |"
-                  else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' trivy-config.json
+            echo "### IaC (Trivy config)"
+            for report in trivy-config.json trivy-terraform.json; do
               echo
-              echo "Fails at HIGH/CRITICAL not triaged in \`openshift/.trivyignore.yaml\`. Full report in the \`iac-report\` artifact."
-            else
-              echo "No report: the scan didn't finish. Check the Trivy config step log."
-            fi
+              if [ -f "$report" ]; then
+                echo "| $report severity | Findings |"
+                echo "|---|---|"
+                jq -r '[.Results[]?.Misconfigurations[]?.Severity]
+                  | if length == 0 then "| none | 0 |"
+                    else group_by(.) | map("| \(.[0]) | \(length) |") | .[] end' "$report"
+              else
+                echo "No $report: the scan didn't finish. Check the Trivy config step log."
+              fi
+            done
+            echo
+            echo "Fails at HIGH/CRITICAL not triaged in \`openshift/.trivyignore.yaml\`. Full reports in the \`iac-report\` artifact."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: iac-report
-          path: trivy-config.json
+          path: trivy-*.json
           if-no-files-found: warn
 
   # --- image: build API + UI from the verified JAR and dist, Trivy scan on every run, push the pair to GHCR on main only ---
