@@ -26,6 +26,8 @@ a GitHub settings step after CI verification.
   specs.
 - Maven (`backend`): Java 21, `mvn -B -ntp clean verify` against a `postgres:16` service (db `crm`, the same throwaway
   values as `compose.yaml`). Never `-DskipTests`.
+- IaC (`iac`): Trivy config on `k8s/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
+  `ansible-lint`. Applying is a separate CD job ([Infrastructure](#infrastructure)).
 
 Same checks locally, before pushing:
 
@@ -35,6 +37,14 @@ cd frontend && npm ci && npx ng build --configuration=production
 
 ```bash
 docker compose up -d && cd backend && mvn -B clean verify
+```
+
+```bash
+cd infra/terraform && terraform fmt -check -recursive && terraform init -backend=false && terraform validate
+```
+
+```bash
+cd infra/ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook -i inventory.yml --syntax-check configure.yml
 ```
 
 ## Package once
@@ -105,15 +115,31 @@ artifact, and the run summary prints the digest.
 
 Deploy by `@sha256:<digest>` only, never by tag.
 
+## Infrastructure
+
+Terraform owns the NetworkPolicies and the two PVCs; Ansible owns `crm-api-config`
+([plan](terraform-ansible-plan.md)). State is the `tfstate-default-crm` Secret, locked by a Lease.
+
+1. Actions > Capstone CD > Run workflow on `main`, action `infra-plan`. Approve the `production` deployment.
+2. Read the job summary: every resource and its action, and the plan digest. Ansible check mode shows the ConfigMap diff.
+3. Run again with `infra-apply` and that digest. A different digest means something changed since review: plan again.
+4. The apply job runs Ansible twice and fails unless the second run reports `changed=0`.
+
+Never apply from a laptop. A local plan is fine: in `infra/terraform`, copy `terraform.tfvars.example` to
+`terraform.tfvars` with the real values, set `KUBE_CONFIG_PATH` and `KUBE_CTX`, then `terraform init` and
+`terraform plan`. The plan takes the Lease lock for a moment.
+
 ## Promote
 
 Push a `v*` tag on a commit whose `main` run is green (production only, no staging: R-01). `capstone-cd.yml` then:
 
 1. finds that commit's successful `main` CI run and downloads its `artifact-manifest.json`;
-2. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
-3. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
+2. Terraform plans against the namespace and stops the release if it differs from `infra/terraform`; then Ansible
+   applies `crm-api-config` ([Infrastructure](#infrastructure));
+3. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
+4. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
    the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
-4. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
+5. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
    A pair becomes the rollback target only when its smoke passes.
 
 Gates, approvers and database rules: [release plan](release-plan.md) and [checklist](release-checklist.md).

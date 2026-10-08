@@ -41,7 +41,6 @@ render() {
     -e "s|^  hostname: .*|  hostname: ${PLATFORM_HOSTNAME:?}|" \
     -e "s|^  ingress-class: .*|  ingress-class: ${INGRESS_CLASS:?}|" \
     -e "s|^  storage-class: .*|  storage-class: ${STORAGE_CLASS:?}|" \
-    -e "s|^  ingress-namespace: .*|  ingress-namespace: ${INGRESS_NAMESPACE:?}|" \
     "$dir/base/configuration.yaml"
   cat > "$dir/kustomization.yaml" <<EOF
 resources: [base]
