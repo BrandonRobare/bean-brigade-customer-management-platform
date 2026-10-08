@@ -52,9 +52,11 @@ NAMESPACE=student08 bash scripts/release.sh rollback && bash scripts/smoke.sh &&
 | --- | --- | --- | --- | --- |
 | 2026-10-07 | local k3d, `scripts/release.sh` | API that never gets ready → known-good v2 | about 1 s: the old pods never stopped serving | automated local check |
 | 2026-10-07 | local k3d, `scripts/release.sh` | released pair that failed smoke → known-good v2, new pods | 18-21 s | automated local check; peer dry-run pending (Lab 44 Step 9) |
+| 2026-10-08 | `student08`, CD `rollback` job ([run 37809907764](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37809907764)) | `v0.1.0` API set by hand as a bad release → known-good `v0.1.1` | 1 min 24 s, including a 51 s approval; the job took 34 s | Brandon; peer dry-run pending (Lab 44 Step 9) |
 
 During one release plus rollback on k3d, 6,910 requests to `/` and readiness all returned 200. Without the 5-second
 `preStop` sleep on the API and UI, the same test lost 13 of 5,004 requests to 502s and dropped connections, so keep it.
 
-The first real rehearsal on `student08` needs two releases (`v0.1.0`, then `v0.1.1`), because the first release has
-nothing to roll back to.
+On `student08` the bad release was `kubectl set image` to the `v0.1.0` API, which has no customer reads. Re-running the
+`v0.1.0` CD run would also have applied that commit's older manifests, so only the image was changed. Recovery went
+through the pipeline as in [Steps](#steps), with no pod restarts. Traffic wasn't measured on this run.
