@@ -17,10 +17,10 @@ Never paste cluster credentials into this file.
 
 ## PR gates
 
-`.github/workflows/capstone-ci.yml` runs on every PR and every push to `main`. Merge enforcement is configured in
-GitHub's `protect-main` ruleset. The live 2026-10-06 snapshot requires only `secrets`; requiring `frontend` and
-`backend` remains #25 work. The #53 branch adds a blocking `sast` job; adding it as a required merge check remains
-a GitHub settings step after CI verification.
+`.github/workflows/capstone-ci.yml` runs on every PR and every push to `main`. GitHub's `protect-main` ruleset
+(checked 2026-10-08) requires a PR, squash merges only, and all seven CI jobs to pass: `frontend`, `backend`, `scan`,
+`sast`, `secrets`, `iac` and `image`. Required approvals are 0 for now (plan: 1); stale approvals are dismissed, the branch can't be deleted or force-pushed, and
+nobody can bypass. `image` only runs once the other six pass, so a red gate anywhere blocks the merge.
 
 - Angular (`frontend`): Node 22, `npm ci`, `npx ng build --configuration=production`. `ng test` joins once there are
   specs.
@@ -46,6 +46,17 @@ cd infra/terraform && terraform fmt -check -recursive && terraform init -backend
 ```bash
 cd infra/ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook -i inventory.yml --syntax-check configure.yml
 ```
+
+## When a check goes red
+
+1. Open the failed job's summary. Each gate writes what failed and why there.
+2. Download the report from that run's artifacts: `gh run download <run-id> -n test-reports` (or `codeql-report`,
+   `dependency-check-report`, `npm-audit-report`, `iac-report`, `image-report`, `dast-report`, `ci-script-tests`).
+3. Reproduce it locally with the commands above, fix it, push. The PR reruns everything.
+4. Re-run a job without a code change only for an infrastructure blip (a registry or download timeout), never to
+   hope a test goes green. Never `-DskipTests`; never lower a gate's threshold to pass.
+
+Drill record: [`reports/failure-experiments-2026-10-08.md`](../reports/failure-experiments-2026-10-08.md).
 
 ## Package once
 
@@ -84,13 +95,8 @@ gate: a high/critical is fixed, or a scoped exception goes into `.github/codeql-
 an expired or malformed entry fails the gate. Keep code scanning default setup off. Workflow actions are pinned to full SHAs;
 `.github/dependabot.yml` proposes weekly updates after a 7-day cooldown.
 
-To finish #53 on GitHub:
-
-1. Push/open a PR, run CI and add the observed `sast` status check to `protect-main`, keeping `secrets` required.
-2. On a disposable PR branch, add a SQL-injection fixture (string-built JDBC query). Confirm `sast` fails, the summary
-   and SARIF survive, merging is blocked and `image` is skipped. Remove the fixture and confirm green.
-3. Keep the failing/passing run URLs in the evidence index, merge the clean change and verify `main` before
-   closing #53 and moving its card to Done. A PR never publishes images, so a PR run alone is not proof of a gate.
+`sast` is a required check (#53, PR #95). Proven on 2026-10-08 with a string-built JDBC query on throwaway PR #126:
+`java/sql-injection` (8.8) failed the gate, skipped `image` and blocked the merge ([run 37834042916](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/37834042916)).
 
 ## npm audit gate (#52)
 
@@ -106,13 +112,15 @@ The gate tests run with the other CI script tests above.
 
 ## Image
 
-On every run, `image` waits for `backend` and `sast` to succeed, then checks the JAR against `SHA256SUMS`, builds
-`backend/Dockerfile` around it and scans the image with Trivy (#49). A critical finding fails the job before the push, unless it's triaged in
-`backend/.trivyignore.yaml` with a matching row in `docs/security-findings.csv`.
+On every run, `image` waits for all six other jobs to pass, then checks the JAR and the Angular `dist/` against their
+`SHA256SUMS` and builds `backend/Dockerfile` and `frontend/Dockerfile` around them, with no rebuild. Trivy (#49) scans
+both images: a critical fails the job before the push, unless it's triaged in `backend/.trivyignore.yaml` with a
+matching row in `docs/security-findings.csv`. Highs show in the report and get a CSV row too (img-001, img-002).
+Then [DAST](#dast-69) runs.
 
-On `main` only, it then pushes `ghcr.io/brandonrobare/crm-api:sha-<commit>` and writes `artifact-manifest.json`
-(version, commit, run ID, JAR checksum, API and UI image digests). The manifest and `trivy-api.json` / `trivy-ui.json` are in the `image-report`
-artifact, and the run summary prints the digest.
+On `main` only, it then pushes `ghcr.io/brandonrobare/crm-api:sha-<commit>` and `crm-ui:sha-<commit>` and writes
+`artifact-manifest.json` (version, commit, run ID, JAR and `dist/` checksums, both image digests). The manifest and
+`trivy-api.json` / `trivy-ui.json` are in the `image-report` artifact, and the run summary prints both digests.
 
 Deploy by `@sha256:<digest>` only, never by tag.
 
@@ -130,7 +138,8 @@ an nginx edge that routes like the Ingress. Then:
   `reason`, `until`), with a matching row in `docs/security-findings.csv`. Medium and lower show in the summary.
 
 Probes, `zap.json`, `zap.html` and the ZAP log are in the `dast-report` artifact. A failure means no push, so CD has
-nothing to promote. Kafka isn't started: the API doesn't publish yet (#30), so the event path isn't covered.
+nothing to promote. Kafka isn't started and no probe records an interaction, so event publishing (#125) isn't
+covered by DAST. `InteractionEventPublisherIT` tests it in `backend` with a mocked `KafkaTemplate`, not a real broker.
 
 ```bash
 API_IMAGE=crm-api:local UI_IMAGE=crm-ui:local bash scripts/dast.sh && python3 .github/scripts/check-zap-report.py
