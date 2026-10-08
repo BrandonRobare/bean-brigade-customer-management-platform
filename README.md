@@ -23,6 +23,14 @@ Requires Java 21, Maven, Node 22 and Docker.
 docker compose up -d
 ```
 
+Copy `.env.example` to `.env`, set `DEMO_AGENT_PASSWORD` and `DEMO_ADMIN_PASSWORD`, then make the signing keys:
+
+```bash
+mkdir -p backend/.keys
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out backend/.keys/jwt-private.pem
+openssl pkey -in backend/.keys/jwt-private.pem -pubout -out backend/.keys/jwt-public.pem
+```
+
 ```bash
 cd backend && mvn -B test && mvn spring-boot:run
 ```
@@ -31,4 +39,5 @@ cd backend && mvn -B test && mvn spring-boot:run
 cd frontend && npm ci && npx ng serve
 ```
 
+Sign in as `agent1` (AGENT) or `admin1` (ADMIN) with the passwords from `.env`.
 Seeded customers: `CUS-1001` Amina Khan, `CUS-1002` Ravi Singh. Synthetic data only; never commit `.env` or credentials.
