@@ -63,7 +63,7 @@ set it to 1.
 | Secrets      | gitleaks                                                 | PR, `main`                           | any finding   | blocking (#56), Brandon; full history, real hits get rotated                    |
 | IaC          | Trivy (`trivy config`) on `k8s/` and `infra/`      | PR, `main`                           | high          | blocking at HIGH/CRITICAL in the `iac` job (#57), Brandon |
 | Image        | Trivy                                                    | PR, `main`, after build, before push | critical      | built (#49), Brandon; fails the push at critical                                |
-| DAST         | OWASP ZAP baseline against the Ingress host              | after `promote`                      | advisory      | planned (#69)                                                                     |
+| DAST         | OWASP ZAP baseline + auth/exposure probes on the candidate pair in Actions | PR, `main`, after image scan, before push | high          | blocking in the `image` job (#69), Brandon |
 
 - **Start new scanners in report-only mode**, triage their findings, then make them blocking by CP3.
   Dependency-Check, CodeQL and `npm audit` have completed their initial triage and now fail CI; the IaC gate remains
