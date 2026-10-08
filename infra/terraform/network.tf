@@ -120,7 +120,11 @@ resource "kubernetes_network_policy_v1" "postgres_ingress" {
     ingress {
       from {
         pod_selector {
-          match_labels = local.app["crm-api"]
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["crm-api", "crm-db-backup"]
+          }
         }
       }
       ports {
@@ -210,6 +214,31 @@ resource "kubernetes_network_policy_v1" "topics_egress" {
       ports {
         protocol = "TCP"
         port     = "9092"
+      }
+    }
+  }
+}
+
+resource "kubernetes_network_policy_v1" "db_backup_egress" {
+  metadata {
+    name      = "crm-db-backup-egress"
+    namespace = var.namespace
+    labels    = local.part_of
+  }
+  spec {
+    pod_selector {
+      match_labels = local.app["crm-db-backup"]
+    }
+    policy_types = ["Egress"]
+    egress {
+      to {
+        pod_selector {
+          match_labels = local.app["crm-postgres"]
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "5432"
       }
     }
   }
