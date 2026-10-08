@@ -67,4 +67,4 @@ Live (CD runs):
 
 ## Approval
 
-- Brandon, (date), (approved / changes requested)
+- Brandon, 2026-10-07, approved
