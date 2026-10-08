@@ -92,7 +92,7 @@ jobs:
             backend/target/SHA256SUMS
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
-  # --- scan: OWASP Dependency-Check on maven deps, npm audit on production npm deps ---
+  # --- scan: OWASP Dependency-Check on maven deps, npm audit on production npm deps; both block at high ---
   scan:
     runs-on: ubuntu-latest
     defaults:
@@ -144,26 +144,13 @@ jobs:
           path: backend/target/dependency-check-report.*
           if-no-files-found: warn
       - name: npm audit
-        working-directory: frontend
-        continue-on-error: true
-        run: npm audit --omit=dev --audit-level=high --json > npm-audit.json
-      - name: npm audit summary
         if: always()
         working-directory: frontend
-        run: |
-          {
-            echo "### npm audit (production dependencies)"
-            if [ -s npm-audit.json ]; then
-              echo "| Severity | Packages |"
-              echo "|---|---|"
-              jq -r '.metadata.vulnerabilities | to_entries[] | select(.key != "total" and .value > 0)
-                | "| \(.key) | \(.value) |"' npm-audit.json
-              echo
-              echo "Report-only until triage is done. Triage in \`docs/security-findings.csv\`. Full report in the \`npm-audit-report\` artifact."
-            else
-              echo "No report: npm audit didn't finish. Check the npm audit step log."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: npm audit --omit=dev --audit-level=high --json > npm-audit.json || true
+      - name: npm audit gate
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/check-npm-audit.py frontend/npm-audit.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:

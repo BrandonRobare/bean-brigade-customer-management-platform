@@ -81,6 +81,18 @@ To finish #53 on GitHub:
 3. Keep the failing/passing run URLs in the evidence index, merge the clean change and verify `main` before
    closing #53 and moving its card to Done. A PR never publishes images, so a PR run alone is not proof of a gate.
 
+## npm audit gate (#52)
+
+The `scan` job runs `npm audit --omit=dev --audit-level=high --json` on the frontend lockfile, then
+`python3 .github/scripts/check-npm-audit.py frontend/npm-audit.json` writes the summary and fails on any high/critical
+advisory in a production dependency, or on a missing or failed audit. Dev dependencies are not gated. Moderate and low
+advisories show in the summary and don't block. No `npm audit fix --force`: it jumps majors.
+
+A high/critical is fixed, or excepted per advisory in `.github/npm-audit-exceptions.json` in a reviewed PR (GHSA `advisory`,
+`id`, `owner`, `reason`, `until`) with a matching row in `docs/security-findings.csv`. An expired entry stops applying,
+so the advisory blocks again. Today that's the 6 Angular 19 advisories under `npm-001`, fixed only in Angular 22.
+The gate tests run with the other CI script tests above.
+
 ## Image
 
 On every run, `image` waits for `backend` and `sast` to succeed, then checks the JAR against `SHA256SUMS`, builds
