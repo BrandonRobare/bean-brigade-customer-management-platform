@@ -41,15 +41,15 @@ changes. Tags never move, and nothing is deployed as `:latest`.
 | Kafka bootstrap servers                           | `localhost:9092`                            | open (see the Actions plan)             | ConfigMap `crm-api-config`               |
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`               | `.env` → `file:.keys/...`                   | the `test` profile generates a key pair | Secret `crm-jwt`, mounted as files       |
 | `DEMO_AGENT_PASSWORD`, `DEMO_ADMIN_PASSWORD`      | `.env`                                      | test-only values                        | Secret `crm-auth`                        |
-| CORS allowed origins                              | `http://localhost:4200`                     | not used                                | not used: one origin through the Ingress |
+| CORS allowed origins                              | not used: `ng serve` proxies `/api`         | not used                                | not used: one origin through the Ingress |
 | Spring profile                                    | `dev` (accepts `lab-demo-token` until 10/6) | `test`                                  | `prod`                                   |
-| Angular API base URL                              | `http://localhost:8080`                     | build only                              | relative, same origin as the UI          |
+| Angular API base URL                              | relative, proxied by `ng serve`             | build only                              | relative, same origin as the UI          |
 
-**One Angular build for every environment.** `environment.ts` hardcodes `apiBaseUrl: 'http://localhost:8080'`, and
-there is no production file replacement, so a production build would call the agent's own laptop. The production build
-therefore uses a relative API URL. In the cluster, `crm-ui` is its own nginx image, and one Ingress host sends `/api`
-to `crm-api` and everything else to `crm-ui` ([ADR 0007](adrs/0007-serve-the-ui-from-its-own-nginx-image.md), #68).
-The UI and API share one origin, so production needs no CORS. Building the UI once per environment is not an option.
+**One Angular build for every environment.** `environment.ts` sets `apiBaseUrl: ''`, so every build calls a relative
+`/api`. In the cluster, `crm-ui` is its own nginx image, and one Ingress host sends `/api` to `crm-api` and everything
+else to `crm-ui` ([ADR 0007](adrs/0007-serve-the-ui-from-its-own-nginx-image.md), #68). Locally, `ng serve` proxies
+`/api` to `:8080` through `proxy.conf.json`. The UI and API share one origin everywhere, so the API has no CORS config.
+Building the UI once per environment is not an option.
 
 **Missing config fails closed.** Outside `dev`, the app refuses to start without the database URL, the JWT keys or the
 demo passwords. There are no fallback defaults.
