@@ -7,7 +7,6 @@ resources:
   - stateful.yaml
   - kafka-topics.yaml
   - ingress.yaml
-  - network-policy.yaml
 labels:
   - pairs:
       app.kubernetes.io/part-of: bean-brigade
@@ -42,12 +41,3 @@ replacements:
       - select:
           kind: StatefulSet
         fieldPaths: [spec.volumeClaimTemplates.0.spec.storageClassName]
-  - source:
-      kind: ConfigMap
-      name: crm-platform
-      fieldPath: data.ingress-namespace
-    targets:
-      - select:
-          kind: NetworkPolicy
-          name: crm-ingress
-        fieldPaths: ['spec.ingress.0.from.0.namespaceSelector.matchLabels.[kubernetes.io/metadata.name]']
