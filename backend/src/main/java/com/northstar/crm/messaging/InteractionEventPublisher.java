@@ -35,12 +35,20 @@ public class InteractionEventPublisher {
     }
 
     private void logFailure(CustomerInteractionRecordedV1 event, Throwable failure) {
-        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", event.correlationId())) {
+        String previous = MDC.get("correlationId");
+        MDC.put("correlationId", event.correlationId());
+        try {
             LOG.error(
                     "Failed to publish interaction event eventId={} correlationId={}",
                     event.eventId(),
                     event.correlationId(),
                     failure);
+        } finally {
+            if (previous == null) {
+                MDC.remove("correlationId");
+            } else {
+                MDC.put("correlationId", previous);
+            }
         }
     }
 }

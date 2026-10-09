@@ -1,6 +1,7 @@
 package com.northstar.crm.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,12 +17,14 @@ import com.northstar.crm.messaging.CustomerInteractionRecordedV1;
 import com.northstar.crm.repo.CustomerRepository;
 import com.northstar.crm.repo.InteractionRepository;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +40,11 @@ class InteractionServiceTest {
     @BeforeEach
     void setUp() {
         interactionService = new InteractionService(customerRepository, interactionRepository, eventPublisher);
+    }
+
+    @AfterEach
+    void tearDown() {
+        MDC.clear();
     }
 
     @Test
@@ -76,5 +84,31 @@ class InteractionServiceTest {
 
         verifyNoInteractions(interactionRepository);
         verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void createPutsSavedCorrelationIdInMdc() {
+        CreateInteractionRequest request = new CreateInteractionRequest("CUS-1001", "NOTE", "Follow up", "body-id-7");
+        when(customerRepository.findByPublicId("CUS-1001")).thenReturn(Optional.of(customer));
+        when(customer.getPublicId()).thenReturn("CUS-1001");
+        when(interactionRepository.save(any(InteractionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MDC.put("correlationId", "generated-by-filter");
+
+        InteractionResponse response = interactionService.create(request, null, "demo-agent");
+
+        assertEquals("body-id-7", response.correlationId());
+        assertEquals("body-id-7", MDC.get("correlationId"));
+    }
+
+    @Test
+    void createLeavesMdcAloneForInvalidCorrelationId() {
+        CreateInteractionRequest request = new CreateInteractionRequest("CUS-1001", "NOTE", "Follow up", "bad\nid");
+        when(customerRepository.findByPublicId("CUS-1001")).thenReturn(Optional.of(customer));
+        when(customer.getPublicId()).thenReturn("CUS-1001");
+        when(interactionRepository.save(any(InteractionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        interactionService.create(request, null, "demo-agent");
+
+        assertNull(MDC.get("correlationId"));
     }
 }

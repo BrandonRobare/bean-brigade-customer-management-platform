@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -89,13 +90,16 @@ class InteractionEventPublisherTest {
         appender.start();
         logger.addAppender(appender);
 
+        MDC.put("correlationId", "request-id");
         try {
             publisher.publish(event);
 
             ILoggingEvent logEvent = appender.list.get(0);
             assertEquals("lab-request-001", logEvent.getMDCPropertyMap().get("correlationId"));
+            assertEquals("request-id", MDC.get("correlationId"));
         } finally {
             logger.detachAppender(appender);
+            MDC.clear();
         }
     }
 }

@@ -51,6 +51,18 @@ class CorrelationIdFilterTest {
         UUID.fromString(generated);
         assertNull(MDC.get("correlationId"));
     }
+
+    @Test
+    void replacesInvalidHeaderWithGeneratedId() throws Exception {
+        for (String bad : new String[] {"  ", "forged\r\nERROR fake line", "x".repeat(65)}) {
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.addHeader("X-Correlation-ID", bad);
+            AtomicReference<String> valueInsideFilter = new AtomicReference<>();
+
+            filter.doFilter(request, new MockHttpServletResponse(), (req, res) ->
+                    valueInsideFilter.set(MDC.get("correlationId")));
+
+            UUID.fromString(valueInsideFilter.get());
+        }
+    }
 }
-
-
