@@ -147,7 +147,7 @@ API_IMAGE=crm-api:local UI_IMAGE=crm-ui:local bash scripts/dast.sh && python3 .g
 
 ## Infrastructure
 
-Terraform owns the NetworkPolicies and the two PVCs; Ansible owns `crm-api-config`
+Terraform owns the NetworkPolicies and the three PVCs (`crm-backup` is the third); Ansible owns `crm-api-config`
 ([plan](terraform-ansible-plan.md)). State is the `tfstate-default-crm` Secret, locked by a Lease.
 
 1. Actions > Capstone CD > Run workflow on `main`, action `infra-plan`. Approve the `production` deployment.
@@ -167,12 +167,23 @@ Push a `v*` tag on a commit whose `main` run is green (production only, no stagi
 2. Terraform plans against the namespace and stops the release if it differs from `infra/terraform`; then Ansible
    applies `crm-api-config` ([Infrastructure](#infrastructure));
 3. `scripts/release.sh secrets` writes the app Secrets from the environment secrets;
-4. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, applies
-   the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
+4. `scripts/release.sh deploy` refuses a manifest from another commit, a non-digest or an image outside GHCR, backs up
+   the database ([Backups](#backups)) and stops if that fails, applies the manifests, waits for PostgreSQL, Kafka and the topic Job, then rolls the API, then the UI, by digest;
 5. `scripts/smoke.sh` runs (it can't be skipped), and `release.sh mark` records the result in the `crm-release` ConfigMap.
    A pair becomes the rollback target only when its smoke passes.
 
 Gates, approvers and database rules: [release plan](release-plan.md) and [checklist](release-checklist.md).
+
+## Backups
+
+Every release starts with `pg_dump` in the `crm-db-backup` Job (`k8s/jobs/`), written to the `crm-backup` PVC. The
+newest five dumps are kept, and `crm-release` records the latest as `last-backup`. If the backup fails, nothing is
+deployed. The Jobs aren't in `kustomization.yaml`, so applying the manifests never starts one.
+
+Restore drill: Actions > Capstone CD > Run workflow, action `restore-drill`. It takes a fresh backup, restores it into
+a scratch database `crm_restore_drill`, times `pg_restore`, compares row counts per table with `crm`, then drops the
+scratch database. The `RESTORE` line goes to the job summary and the log to the `restore-drill-log` artifact. Same
+thing from a laptop: `NAMESPACE=student08 bash scripts/release.sh restore-drill`.
 
 ## Smoke
 

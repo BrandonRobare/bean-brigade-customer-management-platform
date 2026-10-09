@@ -23,6 +23,19 @@ case "$*" in *"-f -"*) cat > /dev/null ;; esac
 case "$*" in
   *"rollout status deployment/crm-api"*) exit 1 ;;
   *"get configmap"*|*"get deployment"*) exit 1 ;;
+  *"get job crm-db-backup"*) echo Complete ;;
+  *"logs -l job-name=crm-db-backup"*) echo "BACKUP /backup/crm-20261008T230000Z.dump 4096" ;;
+esac
+exit 0
+"""
+
+BACKUP_FAILS = """#!/bin/sh
+echo "$@" >> "{calls}"
+case "$*" in *"-f -"*) cat > /dev/null ;; esac
+case "$*" in
+  *"get configmap"*|*"get deployment"*) exit 1 ;;
+  *"get job crm-db-backup"*) echo Failed ;;
+  *"logs -l job-name=crm-db-backup"*) echo "pg_dump: error: connection refused" ;;
 esac
 exit 0
 """
@@ -77,6 +90,22 @@ class ReleaseScriptTest(unittest.TestCase):
         self.assertIn("Rollout failed", result.stderr)
         self.assertIn("set image deployment/crm-api", calls)
         self.assertNotIn("deployment/crm-ui", calls)
+
+    def test_backup_runs_before_anything_is_applied(self):
+        result, calls = self.deploy({"gitCommit": COMMIT, "images": {"api": API, "ui": UI}}, API_ROLLOUT_FAILS)
+        self.assertIn("Backed up crm to /backup/crm-20261008T230000Z.dump", result.stdout)
+        self.assertLess(calls.index("apply -f k8s/jobs/crm-db-backup.yaml"), calls.index("apply -f -"))
+
+    def test_backup_job_manifests_exist(self):
+        for job in ["crm-db-backup", "crm-db-restore-drill"]:
+            self.assertTrue((REPO / "k8s" / "jobs" / f"{job}.yaml").is_file(), job)
+
+    def test_failed_backup_refuses_the_release(self):
+        result, calls = self.deploy({"gitCommit": COMMIT, "images": {"api": API, "ui": UI}}, BACKUP_FAILS)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("pre-release backup failed", result.stderr)
+        self.assertNotIn("apply -f -", calls)
+        self.assertNotIn("set image", calls)
 
 
 if __name__ == "__main__":

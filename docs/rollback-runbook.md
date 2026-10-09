@@ -43,6 +43,9 @@ NAMESPACE=student08 bash scripts/release.sh rollback && bash scripts/smoke.sh &&
 - If the bad release contracted the schema (dropped or renamed a column), the old image may not start. Stop, and fix
   forward with a new tag.
 - Data written by the bad release stays. Clean up with a reviewed migration or script, not by hand in production.
+- If the data itself is lost or corrupted, the dump the release took before deploying is in the `crm-backup` PVC
+  (`last-backup` in `crm-release`). Restoring it over `crm` is a team decision, not part of rollback; the
+  `restore-drill` CD job proves the dumps restore without touching `crm`.
 - Config and Secrets aren't part of the pair. If a Secret change caused the problem, fix the environment secret and
   release again.
 

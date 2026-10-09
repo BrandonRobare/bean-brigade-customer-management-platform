@@ -32,6 +32,38 @@ roll() {
     k rollout status deployment/crm-ui --timeout=180s
 }
 
+run_job() {
+  local cond
+  k delete job "$1" --ignore-not-found --cascade=foreground --wait > /dev/null || return 1
+  k apply -f "k8s/jobs/$1.yaml" > /dev/null || return 1
+  for _ in $(seq 120); do
+    cond=" $(k get job "$1" -o jsonpath='{.status.conditions[?(@.status=="True")].type}') " || return 1
+    case "$cond" in
+      *" Complete "*) k logs -l "job-name=$1" --tail=-1; return 0 ;;
+      *" Failed "*) k logs -l "job-name=$1" --tail=-1 >&2 || true; return 1 ;;
+    esac
+    sleep 3
+  done
+  return 1
+}
+
+backup() {
+  local file
+  if ! k get statefulset crm-postgres > /dev/null 2>&1; then
+    echo "No crm-postgres yet, so there is nothing to back up."
+    return
+  fi
+  file=$(run_job crm-db-backup | awk '$1 == "BACKUP" {print $2}') || true
+  [ -n "$file" ] || fail "Refused: the pre-release backup failed, so nothing was deployed."
+  state_set "last-backup=$file"
+  echo "Backed up crm to $file."
+}
+
+restore_drill() {
+  backup
+  run_job crm-db-restore-drill || fail "Restore drill failed."
+}
+
 render() {
   local dir
   dir=$(mktemp -d)
@@ -67,6 +99,7 @@ deploy() {
 
   current_api=$(image_of crm-api)
   current_ui=$(image_of crm-ui)
+  backup
   k delete job crm-kafka-topics --ignore-not-found > /dev/null
   if [[ "$current_api" == *@sha256:* && "$current_ui" == *@sha256:* ]]; then
     render "$current_api" "$current_ui" | k apply -f - > /dev/null
@@ -140,5 +173,7 @@ case "${1:-}" in
   mark) mark "${2:-}" ;;
   rollback) rollback ;;
   secrets) secrets ;;
-  *) fail "usage: release.sh deploy <manifest> | mark succeeded|failed | rollback | secrets" ;;
+  backup) backup ;;
+  restore-drill) restore_drill ;;
+  *) fail "usage: release.sh deploy <manifest> | mark succeeded|failed | rollback | secrets | backup | restore-drill" ;;
 esac

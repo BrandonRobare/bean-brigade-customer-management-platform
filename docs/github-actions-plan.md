@@ -27,7 +27,7 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `pull_request` to `main`     | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac, image (build + scan)      | nothing                                        |
 | push to `main`               | `capstone-ci.yml` | frontend, backend, scan, sast, secrets, iac, image (build, scan, push) | nothing                                        |
 | tag `v*`                     | `capstone-cd.yml` | promote                                                                      | production                                     |
-| manual (`workflow_dispatch`) | `capstone-cd.yml` | rollback, infra-plan or infra-apply                                          | production                                     |
+| manual (`workflow_dispatch`) | `capstone-cd.yml` | rollback, restore-drill, infra-plan or infra-apply                           | production                                     |
 
 ## Jobs and Gates
 
@@ -41,8 +41,9 @@ each build lands is in [the environment strategy](environment-strategy.md).
 | `iac`       | PR, `main`                                            | Trivy 0.75.0 `trivy config` on `k8s/` and `infra/terraform`, fails at HIGH/CRITICAL not listed in `k8s/.trivyignore.yaml` (#57); `terraform fmt -check`, `init -backend=false`, `validate`; `ansible-playbook --syntax-check`, `ansible-lint` | job blocking; required check pending | Brandon | `iac-report` artifact + job summary |
 | `image`     | PR (build + scan), `main` (push)                      | after `frontend`, `backend`, `scan`, `sast`, `secrets` and `iac` pass, build `crm-api` from the verified JAR and `crm-ui` from the verified `dist/`, Trivy-scan both on every run; on `main`, push both once to GHCR and record the pair (#49, #68)                                                | fails at critical, not required yet | Brandon                   | `image-report` artifact (`artifact-manifest.json`, `trivy-api.json`, `trivy-ui.json`) and job summary                                 |
 | `infra`     | manual (`infra-plan`, `infra-apply`)                  | Terraform plan with a resource summary and digest, Ansible check mode; `infra-apply` re-plans, refuses a different digest, applies, runs Ansible twice and fails unless the second run is `changed=0` | n/a | Brandon | job summary (plan table, digest, Ansible recap) |
-| `promote`   | tag `v*`                                              | find the tagged commit's green `main` run, refuse any other manifest, write Secrets, roll API then UI by digest (`scripts/release.sh`), smoke (`scripts/smoke.sh`), record the result | n/a | Brandon | CD summary, `crm-release` ConfigMap |
+| `promote`   | tag `v*`                                              | find the tagged commit's green `main` run, refuse any other manifest, write Secrets, back up the database (refuse the release if that fails), roll API then UI by digest (`scripts/release.sh`), smoke (`scripts/smoke.sh`), record the result | n/a | Brandon | CD summary, `crm-release` ConfigMap |
 | `rollback`  | manual (`workflow_dispatch`)                          | restore the last pair whose smoke passed, then smoke again; refuses with no history or when it is already running | n/a | Brandon | CD run, [rollback runbook](rollback-runbook.md) |
+| `restore-drill` | manual (`workflow_dispatch`)                      | fresh `pg_dump`, restore into a scratch database, time it, compare row counts, drop it | n/a | Brandon | CD run, `restore-drill-log` artifact |
 
 **Required checks:** as checked on 2026-10-07, the active `protect-main` ruleset requires `scan` and `secrets` from
 GitHub Actions. Dependency-Check fails `scan` at CVSS 7 or on scanner errors, blocking merging; `image` requires
