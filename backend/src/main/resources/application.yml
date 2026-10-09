@@ -26,6 +26,10 @@ spring:
       properties:
         max.block.ms: 3000
 
+logging:
+  pattern:
+    correlation: "[correlationId=%X{correlationId:-}] "
+
 management:
   endpoints:
     web:

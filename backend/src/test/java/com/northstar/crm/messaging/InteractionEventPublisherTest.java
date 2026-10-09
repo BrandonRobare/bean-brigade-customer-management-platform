@@ -1,6 +1,7 @@
 package com.northstar.crm.messaging;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +15,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 @ExtendWith(MockitoExtension.class)
 class InteractionEventPublisherTest {
@@ -70,5 +75,27 @@ class InteractionEventPublisherTest {
         assertDoesNotThrow(() -> publisher.publish(event));
 
         verify(kafkaTemplate).send(CustomerInteractionRecordedV1.TOPIC, "CUS-1001", event);
+    }
+
+    @Test
+    void kafkaFailureLogHasCorrelationIdMdc() {
+        RuntimeException failure = new RuntimeException("Kafka unavailable");
+        when(kafkaTemplate.send(CustomerInteractionRecordedV1.TOPIC, event.customerId(), event))
+                .thenReturn(CompletableFuture.<SendResult<String, CustomerInteractionRecordedV1>>failedFuture(failure));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(InteractionEventPublisher.class);
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            publisher.publish(event);
+
+            ILoggingEvent logEvent = appender.list.get(0);
+            assertEquals("lab-request-001", logEvent.getMDCPropertyMap().get("correlationId"));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 }

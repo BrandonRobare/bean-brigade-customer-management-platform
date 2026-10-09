@@ -2,6 +2,7 @@ package com.northstar.crm.messaging;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -34,10 +35,12 @@ public class InteractionEventPublisher {
     }
 
     private void logFailure(CustomerInteractionRecordedV1 event, Throwable failure) {
-        LOG.error(
-                "Failed to publish interaction event eventId={} correlationId={}",
-                event.eventId(),
-                event.correlationId(),
-                failure);
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", event.correlationId())) {
+            LOG.error(
+                    "Failed to publish interaction event eventId={} correlationId={}",
+                    event.eventId(),
+                    event.correlationId(),
+                    failure);
+        }
     }
 }
