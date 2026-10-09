@@ -76,7 +76,7 @@ set it to 1.
   in `@angular/*` 19.2.25, fixed only in Angular 22, so they're excepted per advisory until 2026-12-31 (`npm-001`), not force-upgraded (no `npm audit fix --force`).
 - **Dependabot alerts stay on** to watch `main` between builds. They don't gate anything; a finding they raise is
   triaged in the same CSV.
-- **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data weekly either way.
+- **Dependency-Check uses the NVD API key when it's there** (`NVD_API_KEY`) and caches the NVD data daily either way.
   Dependabot and fork PRs don't get the secret, so they update at the keyless rate limit. Pinned to 12.2.2: 13.0.0
   fails without a key (upstream dependency-check/DependencyCheck#8715).
 - **First Dependency-Check triage:** Boot 3.3.5 scanned at 25 Critical / 46 High. Boot 3.5.16 with
