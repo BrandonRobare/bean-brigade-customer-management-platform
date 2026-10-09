@@ -7,4 +7,5 @@ export const routes: Routes = [
   { path: 'login', component: LoginPageComponent },
   { path: 'interactions', component: InteractionListPageComponent, canActivate: [authGuard] },
   { path: '', pathMatch: 'full', redirectTo: 'interactions' },
+  { path: '**', redirectTo: 'interactions' }
 ];

@@ -28,6 +28,37 @@ import { Interaction } from './interaction.model';
       </ul>
     </section>
   `,
+  styles: `
+    .meta { color: var(--color-muted); margin: 0 0 1.25rem; }
+    code { background: #e8ecf5; padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .note-form {
+      display: flex;
+      align-items: flex-end;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-left: 4px solid var(--color-primary);
+      border-radius: var(--radius);
+    }
+    .entry {
+      border-left: 4px solid var(--color-blue); /* keep the other properties */
+    }
+    .badge {
+      align-self: flex-start;
+      padding: 0.15rem 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--color-navy);
+      background: #DCEBFF;
+      border-radius: 999px;
+    }
+    .summary { margin: 0; font-weight: 600; }
+    .detail { margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted); }
+    .empty { padding: 1rem; color: var(--color-muted); background: var(--color-surface);
+      border: 1px dashed var(color-border); border-radius: var(--radius); }
+  `
 })
 export class InteractionListPageComponent {
   private readonly api = inject(InteractionApiService);

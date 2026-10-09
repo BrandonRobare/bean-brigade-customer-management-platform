@@ -1,4 +1,75 @@
+:root {
+  --color-navy: #0A2342;
+  --color-navy-dark: #061630;
+  --color-white: #FFFFFF;
+  --color-blue: #007BFF;
+  --color-blue-hover: #0062CC;
+
+  --color-bg: #F4F7FB;
+  --color-surface: #FFFFFF;
+  --color-text: #14223A;
+  --color-muted: #52607A;
+  --color-border: #CBD5E3;
+  --color-error-bg: #FDECEC;
+  --color-error: #A11A1A;
+
+  --radius: 6px;
+  --space: 1rem;
+}
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
 }
+
+h2 { margin: 0 0 var(--space); font-size: 1.6rem; color: var(--color-navy); }
+h3 { color: var(--color-navy); }
+
+a { color: var(--color-blue); }
+a:hover { color: var(--color-blue-hover); }
+
+form { display: grid; gap: var(--space); max-width: 380px; }
+label { display: block; font-weight: 600; font-size: 0.95rem; }
+
+input, select, textarea {
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+input:focus, select:focus, textarea:focus { border-color: var(--color-blue); }
+
+button {
+  padding: 0.7rem 1.25rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-white);
+  background: var(--color-blue);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--color-blue-hover); }
+button:disabled { background: #C9D2E0; color: #4F5B73; cursor: not-allowed; }
+
+:focus-visible { outline: 3px solid var(--color-blue); outline-offset: 2px; }
+
+[role="alert"] {
+  padding: 0.6rem 0.8rem;
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-left: 4px solid var(--color-error);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+table { width: 100%; border-collapse: collapse; background: var(--color-surface); }
+th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--color-border); }

@@ -29,6 +29,9 @@ public class DemoBearerFilter extends OncePerRequestFilter {
       return true;
     }
     String uri = request.getRequestURI();
+    if ("POST".equalsIgnoreCase(request.getMethod()) && "/api/v1/auth/login".equals(uri)) {
+      return true;
+    }
     return uri == null || !uri.startsWith("/api/");
   }
 
