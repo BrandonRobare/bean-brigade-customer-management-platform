@@ -8,9 +8,9 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <section>
+    <section class="login-card">
       <h2>Sign in</h2>
-      <p>Your session lives in memory only, so refreshing the page signs you out.</p>
+      <p class="hint">Your session lives in memory only, so refreshing the page signs you out.</p>
       <p>XSS probe (must stay text): {{ xssProbe }}</p>
       @if (error()) {
         <p role="alert">{{ error() }}</p>
@@ -34,6 +34,20 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
         <button type="submit" [disabled]="form.invalid" data-testid="sign-in">Sign in</button>
       </form>
     </section>
+  `,
+  styles: `
+    .login-card {
+      max-width: 420px;
+      margin: 3rem auto;
+      padding: 2rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-top: 4px solid var(--color-blue);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(10, 35, 66, 0.1);
+    }
+    .login-card form { max-width: none; }
+    .hint { margin: 0 0 1.25rem; color: var(--color-muted); }
   `,
 })
 export class LoginPageComponent {
