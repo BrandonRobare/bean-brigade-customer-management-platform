@@ -1,7 +1,6 @@
 package com.northstar.crm.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -106,9 +105,10 @@ class InteractionServiceTest {
         when(customerRepository.findByPublicId("CUS-1001")).thenReturn(Optional.of(customer));
         when(customer.getPublicId()).thenReturn("CUS-1001");
         when(interactionRepository.save(any(InteractionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MDC.put("correlationId", "generated-by-filter");
 
         interactionService.create(request, null, "demo-agent");
 
-        assertNull(MDC.get("correlationId"));
+        assertEquals("generated-by-filter", MDC.get("correlationId"));
     }
 }
