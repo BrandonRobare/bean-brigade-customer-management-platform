@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # --- frontend: npm ci + production build, dist + checksum for the image job ---
+  # --- frontend: npm ci + unit tests + production build, dist + checksum for the image job ---
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -31,6 +31,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npx ng test --watch=false --browsers=ChromeHeadless
       - run: npx ng build --configuration=production
       - name: Checksum dist
         working-directory: frontend/dist
