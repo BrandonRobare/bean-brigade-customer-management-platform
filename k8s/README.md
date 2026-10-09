@@ -24,7 +24,7 @@ flowchart LR
   Ingress -->|/| UI[Angular / nginx]
   Ingress -->|/api and /actuator| API[Spring Boot]
   API --> PG[PostgreSQL + PVC]
-  API -. integration pending .-> Kafka[Combined KRaft broker/controller + PVC]
+  API -->|interaction events| Kafka[Combined KRaft broker/controller + PVC]
 ```
 
 The browser calls relative `/api/...`; it never calls its own `localhost:8080` in production. nginx serves the UI
@@ -77,8 +77,8 @@ Steady workloads request 1350m / 2176 MiB and limit 2750m / 4352 MiB. An API rol
 (`maxSurge: 1`, `maxUnavailable: 1`), so a rollout that hits the 3 GiB request quota waits for an old pod to stop instead
 of stalling; brief `exceeded quota` events during it are expected. The backup Job finishes before anything rolls.
 Checked on the local k3d rehearsal with the same quota, 2026-10-08: moving from one 500m API pod to two 250m pods,
-a later release and a rollback all finished with every request through the Ingress returning 200. This doesn't prove
-node capacity or disk availability.
+a later release and a rollback all finished with every request through the Ingress returning 200. The same change
+rolled out on `student08` with v0.1.4 on 2026-10-09. This doesn't prove node capacity or disk availability.
 
 **Roll out API, wait for readiness, then roll out UI.** The UI allows one extra pod and keeps the old pod until the
 replacement is ready; the API keeps at least one of its two pods serving. Simultaneous surges with the topic Job exceed the CPU quota. A later CD job must
