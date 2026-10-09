@@ -105,13 +105,13 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: NVD cache week
-        id: nvd-week
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: NVD cache day
+        id: nvd-day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.dependency-check-data
-          key: dependency-check-${{ runner.os }}-${{ steps.nvd-week.outputs.week }}
+          key: dependency-check-${{ runner.os }}-${{ steps.nvd-day.outputs.day }}
           restore-keys: dependency-check-${{ runner.os }}-
       - name: Dependency-Check
         env:
