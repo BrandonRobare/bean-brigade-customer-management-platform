@@ -13,6 +13,7 @@ Fill one copy per `v*` tag in the GitHub release notes. Every line needs evidenc
 | 4 | Migrations | none, or Bryan confirmed the previous image runs on the new schema | PR link |
 | 5 | Platform | hostname, certificate and quota checked (`kubectl describe resourcequota`) | command output |
 | 6 | Rollback target | `crm-release` ConfigMap has a `known-good` pair, or this is the first release | command output |
+| 6a | Backup | the CD `Deploy` step logs `Backed up crm to /backup/crm-<time>.dump` before anything is applied | CD run URL |
 | 7 | Smoke | `scripts/smoke.sh` passes through the Ingress host: TLS, readiness, login, 401/403, `CUS-1001`, `CUS-1002`, `lab-request-001` | CD run URL |
 | 8 | Owner | release owner on hand for the 30-minute watch window | name |
 

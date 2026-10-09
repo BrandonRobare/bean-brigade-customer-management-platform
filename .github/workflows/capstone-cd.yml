@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "rollback: restore the last release whose smoke passed. infra-plan, infra-apply: Terraform and Ansible"
+        description: "rollback: restore the last release whose smoke passed. restore-drill: back up, then time a restore into a scratch database. infra-plan, infra-apply: Terraform and Ansible"
         required: true
         type: choice
-        options: [rollback, infra-plan, infra-apply]
+        options: [rollback, restore-drill, infra-plan, infra-apply]
       plan_digest:
         description: "infra-apply only: the plan digest that infra-plan printed"
         required: false
@@ -165,9 +165,36 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
+  # --- restore-drill: fresh backup, restore it into a scratch database, time it, compare row counts ---
+  restore-drill:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'restore-drill'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Cluster credentials
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$KUBECONFIG")"
+          printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+      - name: Restore drill
+        run: |
+          set -o pipefail
+          bash scripts/release.sh restore-drill 2>&1 | tee restore-drill.log
+          grep '^RESTORE ' restore-drill.log >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: restore-drill-log
+          path: restore-drill.log
+          retention-days: 90
+          if-no-files-found: warn
+
   # --- infra: Terraform plan (and apply on infra-apply), Ansible check (or two real runs on infra-apply) ---
   infra:
-    if: github.event_name == 'workflow_dispatch' && inputs.action != 'rollback'
+    if: github.event_name == 'workflow_dispatch' && startsWith(inputs.action, 'infra-')
     runs-on: ubuntu-latest
     environment: production
     steps:

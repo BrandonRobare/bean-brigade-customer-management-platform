@@ -51,8 +51,10 @@ variables `PLATFORM_HOSTNAME`, `INGRESS_CLASS`, `STORAGE_CLASS`, `INGRESS_NAMESP
 
 ## Rollout
 
-Rolling update, `maxSurge: 1`, `maxUnavailable: 0`: the old pod serves until the new one is ready, and a 5-second
-`preStop` sleep keeps it answering while Traefik stops routing to it. CD rolls the API, waits, then the UI, because both
+Rolling update. The API runs two replicas with `maxSurge: 1`, `maxUnavailable: 1`, so one pod always serves and a
+rollout never waits on quota for its extra pod (#128). The UI keeps `maxSurge: 1`, `maxUnavailable: 0`: its old pod
+serves until the new one is ready. A 5-second `preStop` sleep keeps a stopping pod answering while Traefik stops
+routing to it. CD rolls the API, waits, then the UI, because both
 surging with the topic Job would exceed the CPU quota (R-13). A manifest change to both pod templates still rolls both
 at once when it's applied; that fits the quota unless the topic Job is running. Blue-green needs two of
 everything and canary needs traffic splitting; neither fits one namespace.
@@ -70,7 +72,9 @@ Today there is one migration (`V1__crm_schema.sql`), so every release so far is 
 ## Recovery targets
 
 - RTO: under 5 minutes from deciding to roll back to a passing smoke.
-- RPO: none guaranteed. One PostgreSQL pod on one PVC with no backups (R-09); synthetic data only.
+- RPO: back to the last release. Every release starts with a `pg_dump` to the `crm-backup` PVC (#133); the newest
+  five are kept. The backup PVC sits on the same node as the database, so it covers a bad release or bad data, not a
+  lost node (R-09). Restoring is a deliberate step, not part of rollback: time it with the `restore-drill` CD job.
 
 ## Watch window
 

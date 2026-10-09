@@ -66,18 +66,22 @@ Fixed UIDs are validated for these k3s images.
 
 | Component | Request CPU / memory | Limit CPU / memory |
 | --- | --- | --- |
-| API | 500m / 768 MiB | 1000m / 1536 MiB |
+| API, each of 2 replicas | 250m / 512 MiB | 500m / 1 GiB |
 | UI | 100m / 128 MiB | 250m / 256 MiB |
 | PostgreSQL | 250m / 256 MiB | 500m / 512 MiB |
 | Kafka | 500m / 768 MiB | 1000m / 1536 MiB |
 | Topic Job, temporarily | 100m / 128 MiB | 250m / 256 MiB |
+| Backup Job, before each release | 100m / 128 MiB | 250m / 256 MiB |
 
-Steady workloads request 1350m / 1920 MiB and limit 2750m / 3840 MiB. The worst planned API rollout, including the
-topic Job, requests 1950m / 2816 MiB and limits 4000m / 5632 MiB. This fits the checked 2 CPU / 3 GiB request,
-4 CPU / 6 GiB limit and 15-pod quota, but does not prove node capacity or disk availability.
+Steady workloads request 1350m / 2176 MiB and limit 2750m / 4352 MiB. An API rollout surges one pod and may stop one
+(`maxSurge: 1`, `maxUnavailable: 1`), so a rollout that hits the 3 GiB request quota waits for an old pod to stop instead
+of stalling; brief `exceeded quota` events during it are expected. The backup Job finishes before anything rolls.
+Checked on the local k3d rehearsal with the same quota, 2026-10-08: moving from one 500m API pod to two 250m pods,
+a later release and a rollback all finished with every request through the Ingress returning 200. This doesn't prove
+node capacity or disk availability.
 
-**Roll out API, wait for readiness, then roll out UI.** Both Deployments allow one extra pod and keep the old pod
-until the replacement is ready. Simultaneous surges with the topic Job exceed the CPU quota. A later CD job must
+**Roll out API, wait for readiness, then roll out UI.** The UI allows one extra pod and keeps the old pod until the
+replacement is ready; the API keeps at least one of its two pods serving. Simultaneous surges with the topic Job exceed the CPU quota. A later CD job must
 sequence the application changes instead of applying both updated Deployments together. Changed environment
 ConfigMaps/Secrets also require an intentional restart; environment values do not refresh inside existing pods.
 The API uses [status-only Actuator probes and production JWT rules](../docs/api-runtime.md).
@@ -94,7 +98,9 @@ matching [the current contract](../docs/contract.md). Auto-topic creation is dis
 must be explicitly agreed with the messaging lane before its integration ships. Synthetic event retention is
 24 hours with a 128 MiB per-partition log cap; increase disk/retention for retained business data.
 
-PVCs preserve data across pod restarts. They provide neither backup nor replication. One Postgres pod and one
+PVCs preserve data across pod restarts. They provide no replication. `jobs/crm-db-backup.yaml` dumps PostgreSQL to the
+`crm-backup` PVC before every release and `jobs/crm-db-restore-drill.yaml` restores the newest dump into a scratch
+database; `scripts/release.sh` applies them, so they are deliberately not in `kustomization.yaml`. One Postgres pod and one
 combined Kafka node are single points of failure. Application releases must not delete PVCs, regenerate Kafka's
 cluster ID or reverse Flyway migrations automatically. Schema compatibility and secret rotation require their
 own recovery planning. Splitting Kafka roles while retaining data is a planned migration, not a manifest toggle.
