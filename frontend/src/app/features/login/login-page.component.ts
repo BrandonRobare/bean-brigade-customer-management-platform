@@ -1,4 +1,3 @@
-﻿import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -9,12 +8,17 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <section>
+    <section class="login-card">
       <h2>Sign in</h2>
-      <form (ngSubmit)="login()">
+      <p class="hint">Your session lives in memory only, so refreshing the page signs you out.</p>
+      <p>XSS probe (must stay text): {{ xssProbe }}</p>
+      @if (error()) {
+        <p role="alert">{{ error() }}</p>
+      }
+      <form #form="ngForm" (ngSubmit)="login()">
         <label>
           Username
-          <input name="username" [(ngModel)]="username" autocomplete="username" required />
+          <input name="username" [(ngModel)]="username" required autocomplete="username" data-testid="username" />
         </label>
         <label>
           Password
@@ -22,14 +26,12 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
             name="password"
             type="password"
             [(ngModel)]="password"
-            autocomplete="current-password"
             required
+            autocomplete="current-password"
+            data-testid="password"
           />
         </label>
-        <button type="submit" [disabled]="submitting() || !username || !password">Sign in</button>
-        @if (error()) {
-          <p role="alert">{{ error() }}</p>
-        }
+        <button type="submit" [disabled]="form.invalid" data-testid="sign-in">Sign in</button>
       </form>
     </section>
   `,
@@ -44,35 +46,27 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
       border-radius: 12px;
       box-shadow: 0 4px 16px rgba(10, 35, 66, 0.1);
     }
-  .login-card form { max-width: none; }
-  .hint { margin: 0 0 1.25rem; color: var(--color-muted); }
-  `
+    .login-card form { max-width: none; }
+    .hint { margin: 0 0 1.25rem; color: var(--color-muted); }
+  `,
 })
 export class LoginPageComponent {
   private readonly session = inject(AuthSessionService);
   private readonly router = inject(Router);
 
+  readonly xssProbe = '<img src=x onerror=alert(1)> CUS-1001';
   username = '';
   password = '';
   readonly error = signal<string | null>(null);
-  readonly submitting = signal(false);
 
   login(): void {
     this.error.set(null);
-    this.submitting.set(true);
     this.session.login(this.username, this.password).subscribe({
-      next: () => {
-        this.password = '';
-        void this.router.navigate(['/interactions']);
-      },
-      error: (err: HttpErrorResponse) => {
-        this.submitting.set(false);
+      next: () => void this.router.navigate(['/interactions']),
+      error: (err) =>
         this.error.set(
-          err.status === 401 || err.status === 400
-            ? 'Incorrect username or password.'
-            : 'Unable to sign in right now. Please try again.',
-        );
-      },
+          err.status === 401 ? 'Wrong username or password.' : `Sign-in failed (${err.status ?? 'network'})`,
+        ),
     });
   }
 }

@@ -179,8 +179,8 @@ sequenceDiagram
 Tokens are self-issued (**decided**, ADR 0006). `POST /api/v1/auth/login` checks one of two in-memory demo users and
 returns a JWT signed with the API's private RSA key (RS256). Spring Security's resource server checks every other
 `/api/**` call with the public key, and anything not in the table above is denied. The ADMIN-only endpoints also carry
-`@PreAuthorize("hasRole('ADMIN')")`, so the role check sits on the endpoint as well as in the URL rules. Until the login
-page lands (Tue 10/6), the starter's fixed demo token keeps working under the `dev` profile only.
+`@PreAuthorize("hasRole('ADMIN')")`, so the role check sits on the endpoint as well as in the URL rules. The Angular
+login page calls the same endpoint in every profile; the starter's fixed demo token is gone.
 
 ## Messaging View
 

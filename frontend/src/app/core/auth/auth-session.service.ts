@@ -1,13 +1,13 @@
-﻿import { HttpClient } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
-interface LoginResponse {
+export interface LoginResponse {
   accessToken: string;
+  tokenType: string;
+  expiresIn: number;
 }
-
-/** Demo-only. Matches Boot `DemoBearerFilter`. Not a production secret. */
-export const LAB_DEMO_TOKEN = 'lab-demo-token';
 
 @Injectable({ providedIn: 'root' })
 export class AuthSessionService {
@@ -15,13 +15,13 @@ export class AuthSessionService {
   readonly accessToken = signal<string | null>(null);
 
   login(username: string, password: string): Observable<LoginResponse> {
+    this.logout();
     return this.http
-      .post<LoginResponse>('/api/v1/auth/login', { username, password })
-      .pipe(tap((res) => this.accessToken.set(res.accessToken)));
+      .post<LoginResponse>(`${environment.apiBaseUrl}/api/v1/auth/login`, { username, password })
+      .pipe(tap((response) => this.accessToken.set(response.accessToken)));
   }
 
   logout(): void {
     this.accessToken.set(null);
   }
 }
-

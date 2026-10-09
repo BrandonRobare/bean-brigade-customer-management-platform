@@ -42,7 +42,7 @@ changes. Tags never move, and nothing is deployed as `:latest`.
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`               | `.env` → `file:.keys/...`                   | the `test` profile generates a key pair | Secret `crm-jwt`, mounted as files       |
 | `DEMO_AGENT_PASSWORD`, `DEMO_ADMIN_PASSWORD`      | `.env`                                      | test-only values                        | Secret `crm-auth`                        |
 | CORS allowed origins                              | not used: `ng serve` proxies `/api`         | not used                                | not used: one origin through the Ingress |
-| Spring profile                                    | `dev` (accepts `lab-demo-token` until 10/6) | `test`                                  | `prod`                                   |
+| Spring profile                                    | `dev`                                       | `test`                                  | `prod`                                   |
 | Angular API base URL                              | relative, proxied by `ng serve`             | build only                              | relative, same origin as the UI          |
 
 **One Angular build for every environment.** `environment.ts` sets `apiBaseUrl: ''`, so every build calls a relative
@@ -51,8 +51,8 @@ else to `crm-ui` ([ADR 0007](adrs/0007-serve-the-ui-from-its-own-nginx-image.md)
 `/api` to `:8080` through `proxy.conf.json`. The UI and API share one origin everywhere, so the API has no CORS config.
 Building the UI once per environment is not an option.
 
-**Missing config fails closed.** Outside `dev`, the app refuses to start without the database URL, the JWT keys or the
-demo passwords. There are no fallback defaults.
+**Missing config fails closed.** `dev` and `prod` refuse to start without the JWT keys or the demo passwords, and
+`prod` also refuses without the database URL. Only `dev` falls back to the compose database.
 
 ## Where Config Lives
 

@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: crm-db-restore-drill
+  labels: {app.kubernetes.io/name: crm-db-backup, app.kubernetes.io/part-of: bean-brigade}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: crm-db-backup, app.kubernetes.io/part-of: bean-brigade}
+    spec:
+      serviceAccountName: crm-runtime
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: restore
+          image: postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
+          command: [/bin/bash, -euo, pipefail, -c]
+          args:
+            - |
+              tries=0
+              until pg_isready --host crm-postgres --username crm --dbname crm --timeout 2 > /dev/null; do
+                [ $((tries += 1)) -lt 15 ] || { echo "crm-postgres not reachable"; exit 1; }
+                sleep 2
+              done
+              file=$(ls -1t /backup/crm-*.dump | sed -n 1p)
+              sql() { psql --host crm-postgres --username crm --no-psqlrc --quiet --set ON_ERROR_STOP=1 --tuples-only --no-align "$@"; }
+              sql --dbname postgres --command 'DROP DATABASE IF EXISTS crm_restore_drill' --command 'CREATE DATABASE crm_restore_drill'
+              start=$(date +%s%3N)
+              pg_restore --host crm-postgres --username crm --dbname crm_restore_drill --no-owner --exit-on-error "$file"
+              elapsed=$(( $(date +%s%3N) - start ))
+              counts=$(sql --dbname crm_restore_drill --command "select string_agg(format('select %L, count(*) from %I.%I', table_name, table_schema, table_name), ' union all ') from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'")
+              sql --dbname crm_restore_drill --command "$counts" | sort > /tmp/restored
+              sql --dbname crm --command "$counts" | sort > /tmp/live
+              sql --dbname postgres --command 'DROP DATABASE crm_restore_drill'
+              echo "table|restored|live now"
+              join -t '|' /tmp/restored /tmp/live
+              same=yes; cmp -s /tmp/restored /tmp/live || same=no
+              echo "RESTORE $file ${elapsed}ms tables=$(wc -l < /tmp/restored) matches-live=$same"
+          env:
+            - {name: PGOPTIONS, value: '-c client_min_messages=warning'}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: {name: crm-db, key: password}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: backup, mountPath: /backup, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: backup
+          persistentVolumeClaim: {claimName: crm-backup}
+        - name: tmp
+          emptyDir: {sizeLimit: 32Mi}

@@ -8,7 +8,7 @@
 | `/api/v1/customers/{id}` | GET | Retrieve a specific customer by ID | customer public_id | `Customer` | 200 OK |
 | `/api/v1/interactions` | GET | Retrieve interactions for a specific customer | `customerId` query parameter (public_id) | List of interactions | 200 OK |
 | `/api/v1/interactions` | POST | Create a new interaction for a specific customer | customer public_id and interaction request | Created interaction | 201 Created |
-| `/api/v1/auth/login` | POST | Production-profile sign-in | `username`, `password` | `accessToken`, `tokenType`, `expiresIn` | 200; wrong credentials 401 |
+| `/api/v1/auth/login` | POST | Sign-in | `username`, `password` | `accessToken`, `tokenType`, `expiresIn` | 200; wrong credentials 401 |
 
 As of 2026-10-08, interaction GET/POST and customer search/profile GET are implemented. Search matches part of the
 name or the exact public ID, ignoring case; an empty or missing `query` returns every customer.
@@ -92,8 +92,8 @@ an unknown profile ID returns 404. All fields below are required. The internal n
 ## Headers
 
 - `Content-Type: application/json` for request and success-response bodies.
-- `Authorization: Bearer <token>`: the `prod` profile validates RS256 JWTs as specified by
-  [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md). The fixed training token works only in the `dev` profile.
+- `Authorization: Bearer <token>`: every profile validates RS256 JWTs as specified by
+  [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md). The fixed training token is gone.
 - `X-Correlation-ID`: on POST, a nonblank header overrides body `correlationId`, then the fallback is `lab-request-001`.
   Header names are case-insensitive. Correlation values must fit the 64-character database column; DTO length validation is pending.
 
@@ -155,7 +155,7 @@ logged with `eventId` and `correlationId` and does not undo the saved interactio
 | `correlationId` | string | Effective value saved with the interaction |
 | `occurredAt` | string (ISO 8601 UTC timestamp) | Event time |
 | `eventId` | string (UUID) | Stable event ID for deduplication |
-| `actor` | string | Authenticated JWT `sub`; `demo-agent` under the dev bearer token |
+| `actor` | string | Authenticated JWT `sub` |
 
 Events exclude the interaction summary and customer names/emails. Optional field additions remain in V1;
 removing fields, changing their types or adding required fields after V1 is published requires V2.
