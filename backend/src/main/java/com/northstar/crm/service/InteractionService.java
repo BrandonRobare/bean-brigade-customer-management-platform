@@ -1,5 +1,6 @@
 package com.northstar.crm.service;
 
+import com.northstar.crm.api.CorrelationIdFilter;
 import com.northstar.crm.api.dto.CreateInteractionRequest;
 import com.northstar.crm.api.dto.InteractionResponse;
 import com.northstar.crm.domain.CustomerEntity;
@@ -9,6 +10,7 @@ import com.northstar.crm.repo.InteractionRepository;
 import com.northstar.crm.messaging.CustomerInteractionRecordedV1;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
@@ -59,6 +61,9 @@ public class InteractionService {
       correlationId = correlationHeader;
     } else if (correlationId == null || correlationId.isBlank()) {
       correlationId = DEFAULT_CORRELATION;
+    }
+    if (CorrelationIdFilter.isValid(correlationId)) {
+      MDC.put(CorrelationIdFilter.MDC_KEY, correlationId);
     }
 
     InteractionEntity interaction = new InteractionEntity();
