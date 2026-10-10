@@ -19,43 +19,26 @@ Angular → Spring Boot REST → PostgreSQL, with Kafka events, delivered throug
 
 Requires Java 21, Node 22, Docker, and OpenSSL. The Maven Wrapper is included in the repository.
 
-### 1. Start PostgreSQL and Kafka
+### 1. Create the local environment file and JWT keys
+
+From the repository root (Git Bash on Windows, so openssl is available):
+
+```bash
+bash scripts/setup-local.sh
+```
+
+This copies `.env.example` to `.env` and creates the JWT signing keys in `backend/.keys/`. Both are gitignored.
+The defaults work as-is; change `DEMO_AGENT_PASSWORD` and `DEMO_ADMIN_PASSWORD` if you like.
+
+### 2. Start PostgreSQL and Kafka
 
 ```bash
 docker compose up -d
 ```
-### 2. Create the local environment file
 
-Copy `.env.example` to `.env`
+### 3. Start the backend
 
-Git Bash:
-```bash
-cp .env.example .env
-```
-
-PowerShell:
-```powershell
-Copy-Item .env.example .env
-```
-Set `DEMO_AGENT_PASSWORD` and `DEMO_ADMIN_PASSWORD` to local passwords of your choice.
-
-Leave the local database password as `change-me`.
-
-Do not commit `.env` or credentials.
-
-### 3. Generate JWT signing keys
-
-Run these commands from the repository root. Windows users should use Git Bash so openssl is available.
-
-```bash
-mkdir -p backend/.keys
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out backend/.keys/jwt-private.pem
-openssl pkey -in backend/.keys/jwt-private.pem -pubout -out backend/.keys/jwt-public.pem
-```
-
-The generated .pem files are ignored by Git and should not be committed.
-
-### 4. Start the backend
+Run it from `backend/` so it finds `../.env` and `.keys/`.
 
 Windows PowerShell:
 ```powershell
@@ -64,14 +47,14 @@ cd backend
 ```
 
 Git Bash/macOS/Linux:
-``` bash
+```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
 The API runs on http://localhost:8080.
 
-### 5. Start the frontend
+### 4. Start the frontend
 
 In a second terminal:
 
@@ -83,7 +66,7 @@ npx ng serve
 
 Open http://localhost:4200. The Angular development server forwards /api requests to the backend on port 8080.
 
-### 6. Verify the setup
+### 5. Verify the setup
 Sign in as `agent1` (AGENT) or `admin1` (ADMIN) with the passwords from `.env`.
 
 Seeded customers: `CUS-1001` Amina Khan, `CUS-1002` Ravi Singh.

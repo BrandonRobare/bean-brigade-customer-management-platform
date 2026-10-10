@@ -12,14 +12,14 @@ production also requires `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` a
 Keys accept PEM text or a `file:` resource. The private key is PKCS#8; the public key is X.509; they must match
 and be at least 2048 bits. Missing configuration, invalid keys or empty passwords fail startup. No key is generated
 by the application.
-Generate keys below as required by [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md), keep them outside Git,
-and mount the same key pair in every API pod.
+For local development, `scripts/setup-local.sh` generates them; see [Run locally](../README.md#run-locally).
 
 ```sh
-mkdir -p backend/.keys
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out backend/.keys/jwt-private.pem
-openssl pkey -in backend/.keys/jwt-private.pem -pubout -out backend/.keys/jwt-public.pem
+bash scripts/setup-local.sh
 ```
+
+Production keys must be provisioned separately as required by [ADR 0006](adrs/0006-use-self-issued-jwts-for-auth.md).
+Keep them outside Git and mount the same production key pair in every API pod.
 
 `POST /api/v1/auth/login` accepts `{username,password}`. The synthetic accounts are `agent1` (AGENT) and `admin1`
 (ADMIN); passwords come from Secrets. The response is `{accessToken,tokenType:"Bearer",expiresIn:1800}` and is
@@ -40,7 +40,7 @@ The health configuration includes `db` in readiness and only `livenessState` in 
 JWT verification uses [Spring Security's standard resource server](https://docs.spring.io/spring-security/reference/6.5/servlet/oauth2/resource-server/jwt.html).
 Only health and, in production, metrics are exposed; database and component details stay hidden.
 
-Verify with Java 21, PostgreSQL 16 from `compose.yaml`, and `mvn -B -ntp -f backend/pom.xml clean verify`.
+Verify with Java 21, PostgreSQL 16 from `compose.yaml`, and `./mvnw -B -ntp clean verify` from `backend/`.
 Tests exercise real login/token validation and a closed database pool, including readiness 503 with liveness 200.
 The production security rules cover planned customer mutations and ADMIN interaction deletion; the endpoints
 themselves remain in the backend lane. Angular signs in through the same endpoint; Kafka integration remains unfinished.
