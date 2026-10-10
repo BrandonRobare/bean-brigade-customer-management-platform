@@ -142,6 +142,8 @@ and the training filter sends an empty 401 response.
 ## Interaction Event Fields
 
 `CustomerInteractionRecordedV1` uses topic `crm.customer.interactions.v1`, keyed by public `customerId`.
+Events the consumer cannot process after bounded retries go to `crm.customer.interactions.v1.DLT` (1 partition,
+7-day retention), unchanged.
 Published once the interaction's database transaction commits; a rollback publishes nothing. A Kafka failure is
 logged with `eventId` and `correlationId` and does not undo the saved interaction.
 
