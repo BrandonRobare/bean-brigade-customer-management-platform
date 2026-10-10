@@ -39,4 +39,12 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    command: /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic crm.customer.interactions.v1 --partitions 1 --replication-factor 1
+    command:
+      - sh
+      - -c
+      - >-
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists
+        --topic crm.customer.interactions.v1 --partitions 1 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists
+        --topic crm.customer.interactions.v1.DLT --partitions 1 --replication-factor 1
+        --config retention.ms=604800000

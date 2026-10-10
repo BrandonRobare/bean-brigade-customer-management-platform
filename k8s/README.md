@@ -93,10 +93,12 @@ ZooKeeper container is needed. `CLUSTER_ID`, node ID and the voter hostname stay
 broker logs live under the same PVC; advertising `crm-kafka:9092` gives the application a stable internal address.
 The headless Service publishes the pod address before readiness so quorum startup does not wait on itself.
 
-The topic Job uses `--if-not-exists` for `crm.customer.interactions.v1`, one partition and replication factor 1,
-matching [the current contract](../docs/contract.md). Auto-topic creation is disabled. Additional DLT/retry topics
-must be explicitly agreed with the messaging lane before its integration ships. Synthetic event retention is
-24 hours with a 128 MiB per-partition log cap; increase disk/retention for retained business data.
+The topic Job uses `--if-not-exists` for `crm.customer.interactions.v1` and its dead-letter topic
+`crm.customer.interactions.v1.DLT`, each with one partition and replication factor 1, matching
+[the current contract](../docs/contract.md). Auto-topic creation is disabled, so the consumer can only dead-letter
+to a topic this Job created. Synthetic event retention is 24 hours with a 128 MiB per-partition log cap; the DLT
+overrides retention to 7 days so failed events stay long enough to inspect and replay. Increase disk/retention for
+retained business data.
 
 PVCs preserve data across pod restarts. They provide no replication. `jobs/crm-db-backup.yaml` dumps PostgreSQL to the
 `crm-backup` PVC before every release and `jobs/crm-db-restore-drill.yaml` restores the newest dump into a scratch
