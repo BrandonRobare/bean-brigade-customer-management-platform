@@ -11,7 +11,6 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
     <section class="login-card">
       <h2>Sign in</h2>
       <p class="hint">Your session lives in memory only, so refreshing the page signs you out.</p>
-      <p>XSS probe (must stay text): {{ xssProbe }}</p>
       @if (error()) {
         <p role="alert">{{ error() }}</p>
       }
@@ -41,7 +40,6 @@ export class LoginPageComponent {
   private readonly session = inject(AuthSessionService);
   private readonly router = inject(Router);
 
-  readonly xssProbe = '<img src=x onerror=alert(1)> CUS-1001';
   username = '';
   password = '';
   readonly error = signal<string | null>(null);

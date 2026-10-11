@@ -199,6 +199,25 @@ describe('CustomerProfilePageComponent', () => {
     http.expectOne('/api/v1/interactions?customerId=CUS-1002').flush([]);
   });
 
+  it('renders an HTML payload in a summary as text', () => {
+    flushCustomer();
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([
+      {
+        id: 'INT-1',
+        customerId: 'CUS-1001',
+        interactionType: 'NOTE',
+        summary: '<img src=x onerror=alert(1)>',
+        correlationId: 'correlation-1',
+        createdAt: '2026-10-07T15:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const item = fixture.nativeElement.querySelector('[data-testid="interaction-timeline-item"]');
+    expect(item.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(item.querySelector('img')).toBeNull();
+  });
+
   function flushCustomer(): void {
     http.expectOne('/api/v1/customers/CUS-1001').flush({
       publicId: 'CUS-1001',
