@@ -46,6 +46,7 @@ class ProductionSecurityIT {
     properties.add("crm.security.jwt-public-key", () -> pem("PUBLIC KEY", KEYS.getPublic().getEncoded()));
     properties.add("crm.security.agent-password", () -> "test-only-agent");
     properties.add("crm.security.admin-password", () -> "test-only-admin");
+    properties.add("spring.kafka.listener.auto-startup", () -> "false");
   }
 
   @Test

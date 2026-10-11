@@ -146,6 +146,8 @@ Events the consumer cannot process after bounded retries go to `crm.customer.int
 7-day retention), unchanged.
 Published once the interaction's database transaction commits; a rollback publishes nothing. A Kafka failure is
 logged with `eventId` and `correlationId` and does not undo the saved interaction.
+The `crm-interactions` consumer skips duplicate `eventId` values and sends unsupported versions straight to the DLT.
+Other failures receive one initial attempt plus two retries, 1 second apart.
 
 | Field | JSON type | Meaning |
 |-------|-----------|---------|
