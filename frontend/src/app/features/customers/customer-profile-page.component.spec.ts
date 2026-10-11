@@ -19,7 +19,10 @@ describe('CustomerProfilePageComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
-        { provide: ActivatedRoute, useValue: { paramMap } },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap, snapshot: { queryParamMap: convertToParamMap({}) } },
+        },
       ],
     }).compileComponents();
 
@@ -91,6 +94,33 @@ describe('CustomerProfilePageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="customer-profile-not-found"]')?.textContent)
       .toContain('Customer CUS-1001 was not found.');
     http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+  });
+
+  it('shows an invalid ID without retrying or requesting interactions', () => {
+    http.expectOne('/api/v1/customers/CUS-1001').flush(null, { status: 404, statusText: 'Not Found' });
+    paramMap.next(convertToParamMap({ publicId: 'abc' }));
+    http.expectOne('/api/v1/customers/abc').flush(
+      { type: 'about:blank', title: 'Bad Request', status: 400, detail: 'Invalid customer ID' },
+      { status: 400, statusText: 'Bad Request', headers: { 'Content-Type': 'application/problem+json' } },
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-profile-invalid-id"]')?.textContent)
+      .toContain('Customer ID abc is not valid.');
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-profile-retry"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-profile-error"]')).toBeNull();
+    http.expectNone('/api/v1/interactions?customerId=abc');
+  });
+
+  it('keeps retry available for a network error', () => {
+    http.expectOne('/api/v1/customers/CUS-1001').error(new ProgressEvent('error'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-profile-error"]')?.textContent)
+      .toContain('Customer profile failed to load.');
+    fixture.nativeElement.querySelector('[data-testid="customer-profile-retry"]').click();
+    flushCustomer();
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
   });
 
   it('shows a customer error and retries the profile request', () => {
