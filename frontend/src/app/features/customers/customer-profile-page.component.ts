@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { InteractionApiService } from '../interactions/interaction-api.service';
+import { InteractionFormComponent } from '../interactions/interaction-form.component';
 import { Interaction } from '../interactions/interaction.model';
 import { CustomerApiService } from './customer-api.service';
 import { Customer } from './customer.model';
@@ -11,7 +12,7 @@ import { Customer } from './customer.model';
 @Component({
   selector: 'app-customer-profile-page',
   standalone: true,
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, InteractionFormComponent],
   template: `
     <a routerLink="/customers" data-testid="customer-profile-back">Back to search</a>
 
@@ -34,6 +35,10 @@ import { Customer } from './customer.model';
 
         <section class="interactions">
           <h3>Interactions</h3>
+          <app-interaction-form
+            [customerId]="customer()!.publicId"
+            (saved)="loadInteractions()"
+          />
           @if (interactionLoading()) {
             <p data-testid="interaction-timeline-loading">Loading interactions…</p>
           } @else if (interactionError()) {
@@ -69,6 +74,7 @@ import { Customer } from './customer.model';
     }
     .customer-card p { margin: 0.25rem 0 0; color: var(--color-muted); }
     .interactions { margin-top: 1.5rem; }
+    app-interaction-form { display: block; margin-bottom: 1rem; }
     ol { padding: 0; list-style: none; }
     li { margin-top: 0.75rem; }
     li p { margin: 0.25rem 0; }
