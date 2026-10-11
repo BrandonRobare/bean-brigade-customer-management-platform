@@ -1,5 +1,6 @@
 package com.northstar.crm.api;
 
+import com.northstar.crm.service.InvalidCustomerIdException;
 import com.northstar.crm.service.UnknownCustomerException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -17,13 +18,24 @@ public class ApiExceptionHandler {
   @ExceptionHandler(UnknownCustomerException.class)
   public ResponseEntity<ProblemDetail> notFound(
       UnknownCustomerException ex, HttpServletRequest request) {
+    return problem(
+        HttpStatus.NOT_FOUND, "Customer " + ex.getCustomerId() + " was not found", request);
+  }
+
+  @ExceptionHandler(InvalidCustomerIdException.class)
+  public ResponseEntity<ProblemDetail> badRequest(
+      InvalidCustomerIdException ex, HttpServletRequest request) {
+    return problem(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  private ResponseEntity<ProblemDetail> problem(
+      HttpStatus status, String detail, HttpServletRequest request) {
     ProblemDetail problem =
-        ProblemDetail.forStatusAndDetail(
-            HttpStatus.NOT_FOUND, "Customer " + ex.getCustomerId() + " was not found");
+        ProblemDetail.forStatusAndDetail(status, detail);
     problem.setInstance(URI.create(request.getRequestURI()));
     problem.setProperty("correlationId", MDC.get(CorrelationIdFilter.MDC_KEY));
 
-    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+    return ResponseEntity.status(status)
         .contentType(MediaType.APPLICATION_PROBLEM_JSON)
         .body(problem);
   }

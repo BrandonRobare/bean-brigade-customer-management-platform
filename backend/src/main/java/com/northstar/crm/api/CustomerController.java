@@ -2,6 +2,7 @@ package com.northstar.crm.api;
 
 import com.northstar.crm.api.dto.CustomerDTO;
 import com.northstar.crm.service.CustomerService;
+import com.northstar.crm.service.InvalidCustomerIdException;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +27,9 @@ public class CustomerController {
 
   @GetMapping("/{id}")
   public CustomerDTO getCustomerById(@PathVariable String id) {
+    if (!id.matches("CUS-\\d+")) {
+      throw new InvalidCustomerIdException(id);
+    }
     return customerService.getCustomerById(id);
   }
 }

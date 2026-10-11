@@ -34,7 +34,10 @@ class CustomerApiIT {
   @Autowired MockMvc mockMvc;
 
   private ResultActions getAuthorized(String url) throws Exception {
-    return mockMvc.perform(get(url).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_AGENT"))));
+    return mockMvc.perform(
+        get(url)
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_AGENT")))
+            .header("X-Correlation-ID", "test-correlation-id"));
   }
 
   @Test
@@ -82,17 +85,25 @@ class CustomerApiIT {
 
   @Test
   void profile_unknown_notFound() throws Exception {
-    mockMvc
-        .perform(
-            get("/api/v1/customers/CUS-9999")
-                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_AGENT")))
-                .header("X-Correlation-ID", "test-correlation-id"))
+    getAuthorized("/api/v1/customers/CUS-9999")
         .andExpect(status().isNotFound())
         .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
         .andExpect(jsonPath("$.title").value("Not Found"))
         .andExpect(jsonPath("$.status").value(404))
         .andExpect(jsonPath("$.detail").value("Customer CUS-9999 was not found"))
         .andExpect(jsonPath("$.instance").value("/api/v1/customers/CUS-9999"))
+        .andExpect(jsonPath("$.correlationId").value("test-correlation-id"));
+  }
+
+  @Test
+  void profile_malformedId_badRequest() throws Exception {
+    getAuthorized("/api/v1/customers/not-an-id")
+        .andExpect(status().isBadRequest())
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.title").value("Bad Request"))
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.detail").value("Invalid customer ID: not-an-id"))
+        .andExpect(jsonPath("$.instance").value("/api/v1/customers/not-an-id"))
         .andExpect(jsonPath("$.correlationId").value("test-correlation-id"));
   }
 }
