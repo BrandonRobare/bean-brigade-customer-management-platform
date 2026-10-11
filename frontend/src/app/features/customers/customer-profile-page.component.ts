@@ -14,13 +14,15 @@ import { Customer } from './customer.model';
   standalone: true,
   imports: [DatePipe, RouterLink, InteractionFormComponent],
   template: `
-    <a routerLink="/customers" data-testid="customer-profile-back">Back to search</a>
+    <a routerLink="/customers" [queryParams]="{ q: searchQuery }" data-testid="customer-profile-back">Back to search</a>
 
     <section class="profile">
       @if (customerLoading()) {
         <p data-testid="customer-profile-loading">Loading customer…</p>
       } @else if (customerError() === 'not-found') {
         <p data-testid="customer-profile-not-found">Customer {{ publicId() }} was not found.</p>
+      } @else if (customerError() === 'invalid-id') {
+        <p data-testid="customer-profile-invalid-id">Customer ID {{ publicId() }} is not valid.</p>
       } @else if (customerError() === 'error') {
         <div role="alert" data-testid="customer-profile-error">
           <p>Customer profile failed to load.</p>
@@ -73,10 +75,11 @@ export class CustomerProfilePageComponent {
   private customerRequest?: Subscription;
   private interactionRequest?: Subscription;
 
+  readonly searchQuery = this.route.snapshot.queryParamMap.get('q');
   readonly publicId = signal('');
   readonly customer = signal<Customer | null>(null);
   readonly customerLoading = signal(false);
-  readonly customerError = signal<'not-found' | 'error' | null>(null);
+  readonly customerError = signal<'not-found' | 'invalid-id' | 'error' | null>(null);
   readonly interactions = signal<Interaction[]>([]);
   readonly interactionLoading = signal(false);
   readonly interactionError = signal(false);
@@ -107,7 +110,7 @@ export class CustomerProfilePageComponent {
           this.loadInteractions();
         },
         error: (err) => {
-          this.customerError.set(err.status === 404 ? 'not-found' : 'error');
+          this.customerError.set(err.status === 400 ? 'invalid-id' : err.status === 404 ? 'not-found' : 'error');
           this.customerLoading.set(false);
         },
       });

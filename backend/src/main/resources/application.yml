@@ -4,7 +4,7 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   application:
-    name: lab50-crm
+    name: crm-api
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/crm}
     username: ${SPRING_DATASOURCE_USERNAME:crm}

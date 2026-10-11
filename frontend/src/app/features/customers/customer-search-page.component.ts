@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { CustomerApiService } from './customer-api.service';
 import { Customer } from './customer.model';
@@ -33,7 +33,7 @@ import { Customer } from './customer.model';
         <ul>
           @for (customer of customers(); track customer.publicId) {
             <li data-testid="customer-result">
-              <a [routerLink]="['/customers', customer.publicId]" data-testid="customer-result-link">
+              <a [routerLink]="['/customers', customer.publicId]" [queryParams]="{ q: lastQuery() || null }" data-testid="customer-result-link">
                 {{ customer.fullName }}
               </a>
               <span>{{ customer.publicId }} · {{ customer.status }}</span>
@@ -47,6 +47,8 @@ import { Customer } from './customer.model';
 })
 export class CustomerSearchPageComponent {
   private readonly api = inject(CustomerApiService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private request?: Subscription;
 
   query = '';
@@ -56,11 +58,14 @@ export class CustomerSearchPageComponent {
   readonly lastQuery = signal('');
 
   constructor() {
-    this.search('');
+    this.query = this.route.snapshot.queryParamMap.get('q') ?? '';
+    this.search(this.query.trim());
   }
 
   submit(): void {
-    this.search(this.query.trim());
+    const query = this.query.trim();
+    void this.router.navigate(['/customers'], { queryParams: { q: query || null }, replaceUrl: true });
+    this.search(query);
   }
 
   retry(): void {
