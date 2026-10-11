@@ -3,6 +3,7 @@ package com.northstar.crm.api;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -80,8 +82,17 @@ class CustomerApiIT {
 
   @Test
   void profile_unknown_notFound() throws Exception {
-    getAuthorized("/api/v1/customers/CUS-9999")
+    mockMvc
+        .perform(
+            get("/api/v1/customers/CUS-9999")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_AGENT")))
+                .header("X-Correlation-ID", "test-correlation-id"))
         .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.error").value("not-found"));
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.title").value("Not Found"))
+        .andExpect(jsonPath("$.status").value(404))
+        .andExpect(jsonPath("$.detail").value("Customer CUS-9999 was not found"))
+        .andExpect(jsonPath("$.instance").value("/api/v1/customers/CUS-9999"))
+        .andExpect(jsonPath("$.correlationId").value("test-correlation-id"));
   }
 }

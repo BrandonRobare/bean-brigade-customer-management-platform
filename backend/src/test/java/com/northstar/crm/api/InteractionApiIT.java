@@ -3,6 +3,7 @@ package com.northstar.crm.api;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,7 +82,10 @@ class InteractionApiIT {
             post("/api/v1/interactions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .with(AGENT)
+                .header("X-Correlation-ID", "test-correlation-id")
                 .content(body))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isNotFound())
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.correlationId").value("test-correlation-id"));
   }
 }
