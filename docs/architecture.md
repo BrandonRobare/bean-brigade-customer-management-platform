@@ -76,7 +76,7 @@ flowchart LR
     ui -->|" one host "| ing
     ing -->|" / "| web
     ing -->|" /api: REST / JSON<br/>Authorization: Bearer JWT<br/>X-Correlation-ID "| api
-    api -->|" JDBC as crm_app "| db
+    api -->|" JDBC as owner (crm_app login follow-up) "| db
     api -->|" publish after commit "| kafka
     kafka -->|" consume, dedupe on eventId "| api
 ```
@@ -97,7 +97,7 @@ In the cluster, `crm-ui` is its own nginx image, and the Ingress sends `/api` to
 |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Browser → API    | **The API is the security boundary, not Angular.** Anyone can call the API directly, so every `/api/**` request is authenticated (JWT) and authorized by role on the server. The Angular guard only hides screens that would fail anyway. One origin, so the API sends no CORS headers.   |
 | Token signing    | Only the token endpoint uses the private signing key, which lives in a Kubernetes Secret (locally, a `.env` path to a gitignored file). Checking a token needs only the public key.                                                                                                       |
-| API → PostgreSQL | The app connects as a least-privilege `crm_app` login with data access only (planned in `V2`); Flyway migrates as the schema owner. Credentials come from environment variables or a Kubernetes Secret, never from Git.                                                                   |
+| API → PostgreSQL | The `crm_app` NOLOGIN role and data grants exist in `V3`; the app still connects as the owner until a follow-up switches the login. Flyway migrates as the owner. Credentials come from environment variables or a Kubernetes Secret, never from Git.                                     |
 | API → Kafka      | Internal network only. Events carry IDs, types and the correlation ID, never the interaction's free-text summary.                                                                                                                                                                         |
 | GitHub → cluster | Only the pipeline deploys. Deploy credentials are GitHub Environment secrets; the production environment accepts only `v*` tags.                                                                                                                                                          |
 | Actuator         | Liveness and readiness are open for the Kubernetes probes; `metrics` is ADMIN only; nothing else (`env`, `heapdump`, `info`) is exposed (#54).                                                                                                                                            |
@@ -211,9 +211,9 @@ erDiagram
         varchar public_id UK "CUS-1001"
         varchar full_name
         varchar status "PROSPECT, ACTIVE, CLOSED"
-        varchar email UK "planned in V2"
+        varchar email UK "nullable, added in V3"
         timestamptz created_at
-        timestamptz updated_at "planned in V2"
+        timestamptz updated_at "added in V3"
         bigint version "planned, optimistic locking"
     }
     CUSTOMER_INTERACTION {
