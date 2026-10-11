@@ -13,4 +13,8 @@ export class CustomerApiService {
     const params = new HttpParams().set('query', query);
     return this.http.get<Customer[]>(this.base, { params });
   }
+
+  get(publicId: string): Observable<Customer> {
+    return this.http.get<Customer>(`${this.base}/${encodeURIComponent(publicId)}`);
+  }
 }
