@@ -119,7 +119,7 @@ The target body is below; `status` matches the HTTP status and `correlationId` i
 
 | Status | Meaning |
 |--------|---------|
-| 400 | Missing required parameter, invalid JSON or request validation failure |
+| 400 | Missing required parameter, invalid JSON, request validation failure or malformed customer public ID |
 | 401 | Missing or invalid bearer token |
 | 403 | Authenticated user lacks the required role (`prod` profile) |
 | 404 | Customer does not exist, for example `CUS-9999`; planned interaction mutations also use this for a missing interaction |
@@ -131,13 +131,14 @@ The target body is below; `status` matches the HTTP status and `correlationId` i
   "title": "Not Found",
   "status": 404,
   "detail": "Customer CUS-9999 was not found",
-  "instance": "/api/v1/interactions",
+  "instance": "/api/v1/customers/CUS-9999",
   "correlationId": "lab-request-001"
 }
 ```
 
-Problem Details mapping is pending: the current 404 body is `{"error":"not-found","correlationId":"lab-request-001"}`
-and the training filter sends an empty 401 response.
+An unknown customer returns a Problem Details 404 from the profile and from interaction list and create. A malformed
+profile ID returns a Problem Details 400. Both carry the request's correlation ID.
+The training filter still sends an empty 401 response.
 
 ## Interaction Event Fields
 
