@@ -7,7 +7,7 @@ import { AuthSessionService } from './core/auth/auth-session.service';
   standalone: true,
   imports: [RouterOutlet],
   templateUrl: './app.component.html',
-  styleUrl: './app.component.css',
+  styleUrl: './app.component.scss',
 })
 export class AppComponent {
   readonly session = inject(AuthSessionService);

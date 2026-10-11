@@ -1,0 +1,25 @@
+@use 'mixins' as *;
+
+.card {
+  @include card;
+  display: grid;
+  gap: 0.5rem;
+  max-width: none;
+}
+
+textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.count {
+  color: var(--color-muted);
+  text-align: right;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-error);
+}
+
+button { justify-self: start; }

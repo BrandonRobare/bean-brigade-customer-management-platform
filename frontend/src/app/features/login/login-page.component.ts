@@ -11,7 +11,6 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
     <section class="login-card">
       <h2>Sign in</h2>
       <p class="hint">Your session lives in memory only, so refreshing the page signs you out.</p>
-      <p>XSS probe (must stay text): {{ xssProbe }}</p>
       @if (error()) {
         <p role="alert">{{ error() }}</p>
       }
@@ -35,26 +34,12 @@ import { AuthSessionService } from '../../core/auth/auth-session.service';
       </form>
     </section>
   `,
-  styles: `
-    .login-card {
-      max-width: 420px;
-      margin: 3rem auto;
-      padding: 2rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-top: 4px solid var(--color-blue);
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(10, 35, 66, 0.1);
-    }
-    .login-card form { max-width: none; }
-    .hint { margin: 0 0 1.25rem; color: var(--color-muted); }
-  `,
+  styleUrl: './login-page.component.scss',
 })
 export class LoginPageComponent {
   private readonly session = inject(AuthSessionService);
   private readonly router = inject(Router);
 
-  readonly xssProbe = '<img src=x onerror=alert(1)> CUS-1001';
   username = '';
   password = '';
   readonly error = signal<string | null>(null);

@@ -1,0 +1,29 @@
+@use 'mixins' as *;
+
+.profile { margin-top: 1rem; }
+
+.card { @include card; }
+
+.customer-card p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+}
+
+.interactions { margin-top: 1.5rem; }
+
+app-interaction-form {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+ol { @include plain-list; }
+
+li {
+  margin-top: 0.75rem;
+
+  p { margin: 0.25rem 0; }
+}
+
+time { color: var(--color-muted); }
+
+[role="alert"] { @include alert-with-retry; }

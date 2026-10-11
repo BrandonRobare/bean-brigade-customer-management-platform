@@ -48,22 +48,7 @@ import { Interaction } from './interaction.model';
       </button>
     </form>
   `,
-  styles: `
-    .card {
-      display: grid;
-      gap: 0.5rem;
-      max-width: none;
-      padding: 1rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-left: 4px solid var(--color-blue);
-      border-radius: var(--radius);
-    }
-    textarea { min-height: 6rem; resize: vertical; }
-    .count { color: var(--color-muted); text-align: right; }
-    .error { margin: 0; color: var(--color-error); }
-    button { justify-self: start; }
-  `,
+  styleUrl: './interaction-form.component.scss',
 })
 export class InteractionFormComponent {
   private readonly api = inject(InteractionApiService);

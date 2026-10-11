@@ -46,7 +46,9 @@ Use native semantic elements and Angular component styles for screen-specific pr
 ### Confirmation
 
 - The frontend remains free of Angular Material and Bootstrap dependencies.
-- Shared styles stay in `frontend/src/styles.css`; screen-specific styles stay with their Angular components.
+- Shared styles stay in `frontend/src/styles.scss`: design tokens as CSS custom properties in `styles/_tokens.scss`,
+  base element styles in `styles/_base.scss` and reusable patterns as mixins in `styles/_mixins.scss`.
+  Screen-specific styles stay in each component's own `.scss` file.
 - Review new screens for responsive layout, semantic controls, keyboard operation and visible focus.
 - The existing frontend build remains the CI check for styling and application integration.
 

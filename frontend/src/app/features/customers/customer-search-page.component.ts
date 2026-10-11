@@ -43,36 +43,7 @@ import { Customer } from './customer.model';
       }
     </section>
   `,
-  styles: `
-    .search-form {
-      display: flex;
-      align-items: flex-end;
-      gap: 1rem;
-      max-width: none;
-      padding: 1rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-left: 4px solid var(--color-blue);
-      border-radius: var(--radius);
-    }
-    .search-form label { flex: 1; }
-    ul { padding: 0; list-style: none; }
-    li {
-      display: flex;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-top: 0.75rem;
-      padding: 0.75rem 1rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-left: 4px solid var(--color-blue);
-      border-radius: var(--radius);
-    }
-    li span { color: var(--color-muted); }
-    [role="alert"] { margin-top: 1rem; }
-    [role="alert"] p { margin-top: 0; }
-    [role="alert"] button { background: var(--color-error); }
-  `,
+  styleUrl: './customer-search-page.component.scss',
 })
 export class CustomerSearchPageComponent {
   private readonly api = inject(CustomerApiService);

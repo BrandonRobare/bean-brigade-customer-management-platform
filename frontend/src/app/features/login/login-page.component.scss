@@ -1,0 +1,17 @@
+.login-card {
+  max-width: 420px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--color-blue);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+
+  form { max-width: none; }
+}
+
+.hint {
+  margin: 0 0 1.25rem;
+  color: var(--color-muted);
+}

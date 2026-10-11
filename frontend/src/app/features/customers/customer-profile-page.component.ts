@@ -63,26 +63,7 @@ import { Customer } from './customer.model';
       }
     </section>
   `,
-  styles: `
-    .profile { margin-top: 1rem; }
-    .card {
-      padding: 1rem;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-left: 4px solid var(--color-blue);
-      border-radius: var(--radius);
-    }
-    .customer-card p { margin: 0.25rem 0 0; color: var(--color-muted); }
-    .interactions { margin-top: 1.5rem; }
-    app-interaction-form { display: block; margin-bottom: 1rem; }
-    ol { padding: 0; list-style: none; }
-    li { margin-top: 0.75rem; }
-    li p { margin: 0.25rem 0; }
-    time { color: var(--color-muted); }
-    [role="alert"] { margin-top: 1rem; }
-    [role="alert"] p { margin-top: 0; }
-    [role="alert"] button { background: var(--color-error); }
-  `,
+  styleUrl: './customer-profile-page.component.scss',
 })
 export class CustomerProfilePageComponent {
   private readonly customerApi = inject(CustomerApiService);
