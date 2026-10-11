@@ -16,7 +16,7 @@ CI publishes the API/UI image pair and `capstone-cd.yml` deploys it; the first l
 | Secret | Referenced below; never defined with values here | Supply passwords, signing keys, registry login and TLS |
 | Ingress | `crm-https`, `crm-http` | Route a public hostname to the appropriate internal Service |
 | NetworkPolicy | Default deny plus explicit allowed flows | Restrict network access to the application pods. Owned by Terraform (`infra/terraform/network.tf`) |
-| Job | `crm-kafka-topics` | Create the contract topic once, safely if it already exists |
+| Job | `crm-kafka-topics` | Create the contract topic and its DLT once, safely if they already exist |
 
 ```mermaid
 flowchart LR
