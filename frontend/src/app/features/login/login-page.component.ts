@@ -62,7 +62,7 @@ export class LoginPageComponent {
   login(): void {
     this.error.set(null);
     this.session.login(this.username, this.password).subscribe({
-      next: () => void this.router.navigate(['/interactions']),
+      next: () => void this.router.navigate(['/customers']),
       error: (err) =>
         this.error.set(
           err.status === 401 ? 'Wrong username or password.' : `Sign-in failed (${err.status ?? 'network'})`,
