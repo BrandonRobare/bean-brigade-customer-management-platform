@@ -93,6 +93,62 @@ jobs:
             backend/target/SHA256SUMS
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
+  ui-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Prepare dev API
+        run: |
+          cp .env.example .env
+          mkdir -p backend/.keys
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out backend/.keys/jwt-private.pem
+          openssl pkey -in backend/.keys/jwt-private.pem -pubout -out backend/.keys/jwt-public.pem
+          docker compose up -d --wait postgres kafka
+          docker compose run --rm kafka-topics
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Start API
+        working-directory: backend
+        env:
+          SPRING_PROFILES_ACTIVE: dev
+        run: ./mvnw -B -ntp spring-boot:run > "$RUNNER_TEMP/ui-api.log" 2>&1 &
+      - name: Start UI
+        working-directory: frontend
+        run: npx ng serve --host 127.0.0.1 > "$RUNNER_TEMP/ui-frontend.log" 2>&1 &
+      - name: Wait for API and UI
+        run: |
+          curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors http://localhost:8080/actuator/health/readiness
+          curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors --output /dev/null http://localhost:4200
+      - name: Selenium critical path
+        working-directory: backend
+        run: |
+          set -a
+          source ../.env
+          set +a
+          ./mvnw -B -ntp test -Dtest=CustomerUiSeleniumIT -Dui.baseUrl=http://localhost:4200
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: failure()
+        with:
+          name: ui-e2e-failure
+          path: |
+            backend/target/selenium-failure.png
+            backend/target/surefire-reports/
+            ${{ runner.temp }}/ui-api.log
+            ${{ runner.temp }}/ui-frontend.log
+          if-no-files-found: warn
+
   # --- scan: OWASP Dependency-Check on maven deps, npm audit on production npm deps; both block at high ---
   scan:
     runs-on: ubuntu-latest
