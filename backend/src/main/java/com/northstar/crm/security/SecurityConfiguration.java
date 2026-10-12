@@ -1,15 +1,21 @@
 package com.northstar.crm.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.northstar.crm.api.CorrelationIdFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +23,9 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -34,6 +43,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.util.Assert;
@@ -44,7 +55,7 @@ public class SecurityConfiguration {
   public static final String ISSUER = "bean-brigade-crm";
 
   @Bean
-  SecurityFilterChain api(HttpSecurity http, Environment environment) throws Exception {
+  SecurityFilterChain api(HttpSecurity http, Environment environment, ObjectMapper json) throws Exception {
     JwtGrantedAuthoritiesConverter roles = new JwtGrantedAuthoritiesConverter();
     roles.setAuthoritiesClaimName("roles");
     roles.setAuthorityPrefix("ROLE_");
@@ -66,8 +77,26 @@ public class SecurityConfiguration {
             .requestMatchers(HttpMethod.DELETE, "/api/v1/interactions/**").hasRole("ADMIN")
             .requestMatchers("/api/**").hasAnyRole("AGENT", "ADMIN")
             .anyRequest().denyAll())
-        .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(authentication)))
+        .oauth2ResourceServer(resource -> resource
+            .jwt(jwt -> jwt.jwtAuthenticationConverter(authentication))
+            .authenticationEntryPoint((request, response, ex) -> {
+              new BearerTokenAuthenticationEntryPoint().commence(request, response, ex);
+              securityProblem(HttpStatus.UNAUTHORIZED, request, response, json);
+            })
+            .accessDeniedHandler((request, response, ex) -> {
+              new BearerTokenAccessDeniedHandler().handle(request, response, ex);
+              securityProblem(HttpStatus.FORBIDDEN, request, response, json);
+            }))
         .build();
+  }
+
+  private void securityProblem(HttpStatus status, HttpServletRequest request,
+      HttpServletResponse response, ObjectMapper json) throws IOException {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, status.getReasonPhrase());
+    problem.setInstance(URI.create(request.getRequestURI()));
+    problem.setProperty("correlationId", MDC.get(CorrelationIdFilter.MDC_KEY));
+    response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+    json.writeValue(response.getOutputStream(), problem);
   }
 
   @Bean

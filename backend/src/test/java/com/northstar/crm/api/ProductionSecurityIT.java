@@ -1,6 +1,8 @@
 package com.northstar.crm.api;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -10,6 +12,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.northstar.crm.domain.InteractionEntity;
+import com.northstar.crm.repo.CustomerRepository;
+import com.northstar.crm.repo.InteractionRepository;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -36,6 +44,9 @@ class ProductionSecurityIT {
   private static final KeyPair KEYS = keys();
   @Autowired MockMvc http;
   @Autowired ObjectMapper json;
+  @Autowired CustomerRepository customers;
+  @Autowired InteractionRepository interactions;
+  @Autowired JdbcTemplate jdbc;
 
   @DynamicPropertySource
   static void configuration(DynamicPropertyRegistry properties) {
@@ -118,6 +129,40 @@ class ProductionSecurityIT {
               .header("Authorization", "Bearer " + token))
           .andExpect(status().isUnauthorized());
     }
+  }
+
+  @Test
+  @Transactional
+  void interactionMutationsRejectInvalidTokensAndAgentDeletionWithoutChangingRow() throws Exception {
+    InteractionEntity interaction = new InteractionEntity();
+    UUID id = UUID.randomUUID();
+    interaction.setId(id);
+    interaction.setCustomer(customers.findByPublicId("CUS-1001").orElseThrow());
+    interaction.setInteractionType("NOTE");
+    interaction.setSummary("Security test note");
+    interaction.setCorrelationId("security-creation");
+    interactions.saveAndFlush(interaction);
+    var before = jdbc.queryForMap("SELECT * FROM customer_interaction WHERE interaction_id = ?", id);
+    for (String token : new String[] {
+        "lab-demo-token",
+        token("bean-brigade-crm", Instant.now().plusSeconds(300), keys()),
+        token("bean-brigade-crm", Instant.now().minusSeconds(120), KEYS),
+        token("wrong-issuer", Instant.now().plusSeconds(300), KEYS)}) {
+      http.perform(patch("/api/v1/interactions/{id}", id).secure(true)
+              .header("Authorization", "Bearer " + token).header("X-Correlation-ID", "security-mutation")
+              .contentType(MediaType.APPLICATION_JSON).content("{\"version\":0,\"summary\":\"Changed\"}"))
+          .andExpect(status().isUnauthorized()).andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+          .andExpect(jsonPath("$.correlationId").value("security-mutation"));
+      http.perform(delete("/api/v1/interactions/{id}", id).param("version", "0").secure(true)
+              .header("Authorization", "Bearer " + token).header("X-Correlation-ID", "security-mutation"))
+          .andExpect(status().isUnauthorized()).andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+          .andExpect(jsonPath("$.correlationId").value("security-mutation"));
+      assertEquals(before, jdbc.queryForMap("SELECT * FROM customer_interaction WHERE interaction_id = ?", id));
+    }
+    http.perform(delete("/api/v1/interactions/{id}", id).param("version", "0").secure(true)
+            .header("Authorization", "Bearer " + login("agent1", "test-only-agent")))
+        .andExpect(status().isForbidden()).andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    assertEquals(before, jdbc.queryForMap("SELECT * FROM customer_interaction WHERE interaction_id = ?", id));
   }
 
   @Test

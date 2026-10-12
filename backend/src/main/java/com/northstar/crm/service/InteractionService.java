@@ -3,20 +3,33 @@ package com.northstar.crm.service;
 import com.northstar.crm.api.CorrelationIdFilter;
 import com.northstar.crm.api.dto.CreateInteractionRequest;
 import com.northstar.crm.api.dto.InteractionResponse;
+import com.northstar.crm.api.dto.UpdateInteractionRequest;
 import com.northstar.crm.domain.CustomerEntity;
 import com.northstar.crm.domain.InteractionEntity;
+import com.northstar.crm.messaging.CustomerInteractionRecordedV1;
 import com.northstar.crm.repo.CustomerRepository;
 import com.northstar.crm.repo.InteractionRepository;
-import com.northstar.crm.messaging.CustomerInteractionRecordedV1;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.context.ApplicationEventPublisher;
 
 @Service
 public class InteractionService {
+
+  private static final Logger log = LoggerFactory.getLogger(InteractionService.class);
+
+  @PersistenceContext
+  private EntityManager entityManager;
 
   public static final String DEFAULT_CORRELATION = "lab-request-001";
 
@@ -37,15 +50,7 @@ public class InteractionService {
       throw new UnknownCustomerException(customerId);
     }
     return interactionRepository.findByCustomer_PublicIdOrderByCreatedAtDesc(customerId).stream()
-        .map(
-            entity ->
-                new InteractionResponse(
-                    entity.getId(),
-                    entity.getCustomer().getPublicId(),
-                    entity.getInteractionType(),
-                    entity.getSummary(),
-                    entity.getCorrelationId(),
-                    entity.getCreatedAt()))
+        .map(entity -> response(entity, entity.getVersion()))
         .toList();
   }
 
@@ -88,12 +93,51 @@ public class InteractionService {
 
     eventPublisher.publishEvent(event);
 
+    return response(saved, saved.getVersion());
+  }
+
+  @Transactional
+  public InteractionResponse update(UUID id, UpdateInteractionRequest request) {
+    InteractionEntity interaction = current(id, request.version());
+    String type = request.interactionType() == null ? interaction.getInteractionType() : request.interactionType();
+    String summary = request.summary() == null ? interaction.getSummary() : request.summary();
+    boolean unchanged = Objects.equals(type, interaction.getInteractionType())
+        && Objects.equals(summary, interaction.getSummary());
+    interaction.setInteractionType(type);
+    interaction.setSummary(summary);
+    if (unchanged) {
+      entityManager.lock(interaction, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+    }
+    interactionRepository.flush();
+    log.info("Edited interaction interactionId={} correlationId={}", id, MDC.get(CorrelationIdFilter.MDC_KEY));
+    return response(interaction, interaction.getVersion() + (unchanged ? 1 : 0));
+  }
+
+  @Transactional
+  public void delete(UUID id, long version) {
+    InteractionEntity interaction = current(id, version);
+    interactionRepository.delete(interaction);
+    interactionRepository.flush();
+    log.info("Deleted interaction interactionId={} correlationId={}", id, MDC.get(CorrelationIdFilter.MDC_KEY));
+  }
+
+  private InteractionEntity current(UUID id, long version) {
+    InteractionEntity interaction = interactionRepository.findById(id)
+        .orElseThrow(() -> new UnknownInteractionException(id));
+    if (interaction.getVersion() != version) {
+      throw new ObjectOptimisticLockingFailureException(InteractionEntity.class, id);
+    }
+    return interaction;
+  }
+
+  private InteractionResponse response(InteractionEntity interaction, long version) {
     return new InteractionResponse(
-        saved.getId(),
-        saved.getCustomer().getPublicId(),
-        saved.getInteractionType(),
-        saved.getSummary(),
-        saved.getCorrelationId(),
-        saved.getCreatedAt());
+        interaction.getId(),
+        interaction.getCustomer().getPublicId(),
+        interaction.getInteractionType(),
+        interaction.getSummary(),
+        interaction.getCorrelationId(),
+        interaction.getCreatedAt(),
+        version);
   }
 }
