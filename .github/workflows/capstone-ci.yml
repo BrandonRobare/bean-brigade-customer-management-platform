@@ -131,19 +131,19 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors http://localhost:8080/actuator/health/readiness
           curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors --output /dev/null http://localhost:4200
-      - name: Selenium critical path
+      - name: Selenium UI tests
         working-directory: backend
         run: |
           set -a
           source ../.env
           set +a
-          ./mvnw -B -ntp test -Dtest=CustomerUiSeleniumIT -Dui.baseUrl=http://localhost:4200
+          ./mvnw -B -ntp test -Dtest=${{ github.event_name == 'push' && 'CustomerUiSeleniumIT,CustomerUiFullSeleniumIT' || 'CustomerUiSeleniumIT' }} -Dui.baseUrl=http://localhost:4200
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:
           name: ui-e2e-failure
           path: |
-            backend/target/selenium-failure.png
+            backend/target/selenium-failure*.png
             backend/target/surefire-reports/
             ${{ runner.temp }}/ui-api.log
             ${{ runner.temp }}/ui-frontend.log

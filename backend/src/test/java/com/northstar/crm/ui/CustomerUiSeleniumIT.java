@@ -1,19 +1,15 @@
 package com.northstar.crm.ui;
 
+import static com.northstar.crm.ui.SeleniumSupport.testId;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.openqa.selenium.By;
-import org.openqa.selenium.OutputType;
 import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -26,15 +22,11 @@ class CustomerUiSeleniumIT {
     String password = System.getenv("DEMO_AGENT_PASSWORD");
     assertNotNull(password, "DEMO_AGENT_PASSWORD must match the running dev API");
 
-    ChromeOptions options = new ChromeOptions();
-    options.addArguments("--headless=new", "--window-size=1440,1000");
-    ChromeDriver driver = new ChromeDriver(options);
+    ChromeDriver driver = SeleniumSupport.createDriver();
     WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     try {
       driver.get(baseUrl);
-      wait.until(ExpectedConditions.visibilityOfElementLocated(testId("username"))).sendKeys("agent1");
-      driver.findElement(testId("password")).sendKeys(password);
-      wait.until(ExpectedConditions.elementToBeClickable(testId("sign-in"))).click();
+      SeleniumSupport.signIn(driver, wait, "agent1", password);
       wait.until(ExpectedConditions.visibilityOfElementLocated(testId("customer-search-input")))
           .sendKeys("amina");
       driver.findElement(testId("customer-search-submit")).click();
@@ -55,20 +47,10 @@ class CustomerUiSeleniumIT {
       wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), summary));
       assertTrue(driver.findElement(testId("interaction-timeline-item")).getText().contains(summary));
     } catch (Exception | AssertionError failure) {
-      try {
-        Path screenshot = Path.of("target", "selenium-failure.png");
-        Files.createDirectories(screenshot.getParent());
-        Files.write(screenshot, driver.getScreenshotAs(OutputType.BYTES));
-      } catch (Exception screenshotFailure) {
-        failure.addSuppressed(screenshotFailure);
-      }
+      SeleniumSupport.saveFailure(driver, "critical-path", failure);
       throw failure;
     } finally {
       driver.quit();
     }
-  }
-
-  private static By testId(String id) {
-    return By.cssSelector("[data-testid='" + id + "']");
   }
 }
