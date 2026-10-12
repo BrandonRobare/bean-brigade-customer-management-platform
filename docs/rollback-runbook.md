@@ -11,6 +11,8 @@ Roll back when any of these holds after a release:
 - Sign-in, customer lookup or recording an interaction returns `5xx` for real users.
 - An event-driven flow stops (Kafka consumer lag keeps growing) once messaging ships.
 
+For a rejected Kafka record, use the [DLT replay runbook](dlt-replay-runbook.md).
+
 Don't roll back when the problem is data or a migration that already contracted the schema. See [Limits](#limits).
 
 ## Authority
