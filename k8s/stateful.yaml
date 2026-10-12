@@ -125,7 +125,7 @@ spec:
           envFrom:
             - configMapRef: {name: crm-kafka-config}
           resources:
-            requests: {cpu: 500m, memory: 768Mi}
+            requests: {cpu: 500m, memory: 512Mi}
             limits: {cpu: 1000m, memory: 1536Mi}
           securityContext:
             allowPrivilegeEscalation: false

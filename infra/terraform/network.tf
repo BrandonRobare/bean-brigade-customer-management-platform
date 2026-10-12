@@ -243,3 +243,53 @@ resource "kubernetes_network_policy_v1" "db_backup_egress" {
     }
   }
 }
+
+resource "kubernetes_network_policy_v1" "api_metrics_ingress" {
+  metadata {
+    name      = "crm-api-metrics-ingress"
+    namespace = var.namespace
+    labels    = local.part_of
+  }
+  spec {
+    pod_selector {
+      match_labels = local.app["crm-api"]
+    }
+    policy_types = ["Ingress"]
+    ingress {
+      from {
+        pod_selector {
+          match_labels = local.app["crm-prometheus"]
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "8081"
+      }
+    }
+  }
+}
+
+resource "kubernetes_network_policy_v1" "prometheus_egress" {
+  metadata {
+    name      = "crm-prometheus-egress"
+    namespace = var.namespace
+    labels    = local.part_of
+  }
+  spec {
+    pod_selector {
+      match_labels = local.app["crm-prometheus"]
+    }
+    policy_types = ["Egress"]
+    egress {
+      to {
+        pod_selector {
+          match_labels = local.app["crm-api"]
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "8081"
+      }
+    }
+  }
+}
