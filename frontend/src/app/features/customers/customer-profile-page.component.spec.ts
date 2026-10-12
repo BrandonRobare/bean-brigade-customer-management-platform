@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { CustomerProfilePageComponent } from './customer-profile-page.component';
@@ -421,6 +421,161 @@ describe('CustomerProfilePageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="interaction-edit"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="interaction-delete"]')).toBeNull();
   });
+
+  async function loadCustomer(role = 'ADMIN'): Promise<void> {
+    setRole(role);
+    flushCustomer();
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  it('hides all customer writes for AGENT and guards direct handler calls', async () => {
+    await loadCustomer('AGENT');
+    for (const id of ['customer-edit', 'customer-status-form', 'customer-delete']) {
+      expect(fixture.nativeElement.querySelector(`[data-testid="${id}"]`)).toBeNull();
+    }
+    fixture.componentInstance.saveName();
+    fixture.componentInstance.changeStatus();
+    fixture.componentInstance.deleteCustomer();
+    http.expectNone('/api/v1/customers/CUS-1001');
+    http.expectNone('/api/v1/customers/CUS-1001/status');
+  });
+
+  it('updates the name with its version and refetches the profile', async () => {
+    await loadCustomer();
+    element('customer-edit').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    setValue('customer-edit-name', '  Updated name  ');
+    element('customer-edit-form').dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    const request = http.expectOne('/api/v1/customers/CUS-1001');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ fullName: 'Updated name', version: 0 });
+    expect((element('customer-edit-save') as HTMLButtonElement).disabled).toBeTrue();
+    request.flush({ version: 1 });
+    http.expectOne('/api/v1/customers/CUS-1001').flush({ publicId: 'CUS-1001', fullName: 'Updated name', status: 'ACTIVE', createdAt: '2026-10-06T20:00:00Z', version: 1 });
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
+    fixture.detectChanges();
+    expect(element('customer-profile-name').textContent).toContain('Updated name');
+  });
+
+  it('blocks status changes while a name draft is open', async () => {
+    await loadCustomer();
+    element('customer-edit').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    setValue('customer-edit-name', 'My name draft');
+    fixture.detectChanges();
+    expect((element('customer-status-submit') as HTMLButtonElement).disabled).toBeTrue();
+    fixture.componentInstance.changeStatus();
+    expect((element('customer-edit-name') as HTMLInputElement).value).toBe('My name draft');
+    http.expectNone('/api/v1/customers/CUS-1001/status');
+  });
+
+  it('changes status with its version and refetches the profile', async () => {
+    await loadCustomer();
+    setValue('customer-status', 'CLOSED', 'change');
+    element('customer-status-form').dispatchEvent(new Event('submit'));
+    const request = http.expectOne('/api/v1/customers/CUS-1001/status');
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({ status: 'CLOSED', version: 0 });
+    request.flush({ version: 1 });
+    http.expectOne('/api/v1/customers/CUS-1001').flush({ publicId: 'CUS-1001', fullName: 'Amina Khan', status: 'CLOSED', createdAt: '2026-10-06T20:00:00Z', version: 1 });
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
+    fixture.detectChanges();
+    expect(element('customer-profile-status').textContent).toContain('CLOSED');
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-status-form"]')).toBeNull();
+  });
+
+  it('sends no customer DELETE when confirmation is cancelled', async () => {
+    await loadCustomer();
+    spyOn(window, 'confirm').and.returnValue(false);
+    element('customer-delete').click();
+    http.expectNone('/api/v1/customers/CUS-1001?version=0');
+    expect(fixture.componentInstance.customer()?.publicId).toBe('CUS-1001');
+  });
+
+  it('removes the customer and navigates to search only after 204', async () => {
+    await loadCustomer();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    spyOn(window, 'confirm').and.returnValue(true);
+    element('customer-delete').click();
+    const request = http.expectOne('/api/v1/customers/CUS-1001?version=0');
+    expect(request.request.method).toBe('DELETE');
+    expect(navigate).not.toHaveBeenCalled();
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    expect(fixture.componentInstance.customer()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith(['/customers'], { queryParams: { q: null } });
+  });
+
+  for (const action of ['name', 'status', 'delete']) {
+    it(`keeps drafts on a ${action} conflict and never retries automatically`, async () => {
+      await loadCustomer();
+      element('customer-edit').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      setValue('customer-edit-name', 'My draft');
+      setValue('customer-status', 'CLOSED', 'change');
+      if (action === 'status') {
+        fixture.componentInstance.editing.set(false);
+        fixture.detectChanges();
+      }
+      if (action === 'delete') {
+        spyOn(window, 'confirm').and.returnValue(true);
+        element('customer-delete').click();
+      } else element(action === 'name' ? 'customer-edit-form' : 'customer-status-form').dispatchEvent(new Event('submit'));
+      const url = '/api/v1/customers/CUS-1001' + (action === 'status' ? '/status' : action === 'delete' ? '?version=0' : '');
+      http.expectOne(url).flush({ detail: 'Conflict' }, { status: 409, statusText: 'Conflict' });
+      fixture.detectChanges();
+      expect(fixture.componentInstance.fullName).toBe('My draft');
+      if (action !== 'status') expect((element('customer-edit-name') as HTMLInputElement).value).toBe('My draft');
+      expect((element('customer-status') as HTMLSelectElement).value).toBe('CLOSED');
+      expect(element('customer-mutation-error').textContent).toContain('Reload');
+      expect((element('customer-status-submit') as HTMLButtonElement).disabled).toBeTrue();
+      http.expectNone(url);
+      http.expectNone('/api/v1/customers/CUS-1001');
+      element('customer-reload').click();
+      flushCustomer();
+      http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.conflict()).toBeFalse();
+    });
+  }
+
+  for (const name of ['   ', 'x'.repeat(201)]) {
+    it(`validates edit name length ${name.length} without a request`, async () => {
+      await loadCustomer();
+      element('customer-edit').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      setValue('customer-edit-name', name);
+      element('customer-edit-form').dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+      expect(element('customer-name-error').getAttribute('role')).toBe('alert');
+      http.expectNone('/api/v1/customers/CUS-1001');
+    });
+  }
+
+  for (const status of [400, 401, 403, 404, 500, 0]) {
+    it(`preserves the customer draft and shows API error ${status}`, async () => {
+      await loadCustomer();
+      element('customer-edit').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      setValue('customer-edit-name', 'Unsaved draft');
+      element('customer-edit-form').dispatchEvent(new Event('submit'));
+      const request = http.expectOne('/api/v1/customers/CUS-1001');
+      if (status === 0) request.error(new ProgressEvent('error'));
+      else request.flush(null, { status, statusText: 'Error' });
+      fixture.detectChanges();
+      expect((element('customer-edit-name') as HTMLInputElement).value).toBe('Unsaved draft');
+      expect(element('customer-mutation-error').getAttribute('role')).toBe('alert');
+      expect(fixture.componentInstance.mutating()).toBeFalse();
+      http.expectNone('/api/v1/customers/CUS-1001');
+    });
+  }
 
   const interaction = {
     id: 'INT-1', customerId: 'CUS-1001', interactionType: 'NOTE', summary: 'Original summary',

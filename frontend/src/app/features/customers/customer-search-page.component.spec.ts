@@ -1,3 +1,4 @@
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -24,6 +25,67 @@ describe('CustomerSearchPageComponent', () => {
   });
 
   afterEach(() => http.verify());
+
+  function admin(): void {
+    TestBed.inject(AuthSessionService).accessToken.set(`header.${btoa(JSON.stringify({ roles: ['ADMIN'] }))}.signature`);
+    fixture.detectChanges();
+  }
+
+  it('hides customer creation for agents', () => {
+    http.expectOne('/api/v1/customers?query=').flush([]);
+    TestBed.inject(AuthSessionService).accessToken.set(`header.${btoa(JSON.stringify({ roles: ['AGENT'] }))}.signature`);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-create-form"]')).toBeNull();
+    fixture.componentInstance.create();
+    http.expectNone('/api/v1/customers');
+  });
+
+  it('creates as ADMIN and refetches search to show the created customer', () => {
+    http.expectOne('/api/v1/customers?query=').flush([]);
+    admin();
+    fixture.componentInstance.fullName = '  New customer  ';
+    fixture.nativeElement.querySelector('[data-testid="customer-create-form"]').dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    const request = http.expectOne('/api/v1/customers');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ fullName: 'New customer' });
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-create-submit"]').disabled).toBeTrue();
+    const customer = { publicId: 'CUS-2001', fullName: 'New customer', status: 'PROSPECT', createdAt: '2026-10-12T00:00:00Z', version: 0 };
+    request.flush(customer, { status: 201, statusText: 'Created' });
+    http.expectOne('/api/v1/customers?query=CUS-2001').flush([customer]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="customer-result"]').textContent).toContain('New customer');
+    expect(fixture.componentInstance.fullName).toBe('');
+  });
+
+  for (const name of ['  ', 'x'.repeat(201)]) {
+    it(`validates a create name of length ${name.length} without sending a request`, () => {
+      http.expectOne('/api/v1/customers?query=').flush([]);
+      admin();
+      fixture.componentInstance.fullName = name;
+      fixture.componentInstance.create();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[data-testid="customer-create-error"]').getAttribute('role')).toBe('alert');
+      http.expectNone('/api/v1/customers');
+    });
+  }
+
+  for (const status of [400, 401, 403, 409, 500, 0]) {
+    it(`shows create error ${status} and preserves the entered name`, () => {
+      http.expectOne('/api/v1/customers?query=').flush([]);
+      admin();
+      fixture.componentInstance.fullName = 'Draft';
+      fixture.componentInstance.create();
+      const request = http.expectOne('/api/v1/customers');
+      if (status === 0) request.error(new ProgressEvent('error'));
+      else request.flush(null, { status, statusText: 'Error' });
+      fixture.detectChanges();
+      expect(fixture.componentInstance.fullName).toBe('Draft');
+      expect(fixture.componentInstance.creating()).toBeFalse();
+      expect(fixture.nativeElement.querySelector('[data-testid="customer-create-error"]').getAttribute('role')).toBe('alert');
+      http.expectNone('/api/v1/customers');
+    });
+  }
 
   it('loads every customer and links each result to its profile', () => {
     const request = http.expectOne('/api/v1/customers?query=');

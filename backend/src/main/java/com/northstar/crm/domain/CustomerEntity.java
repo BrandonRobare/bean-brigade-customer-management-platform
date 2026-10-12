@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 
 @Entity
@@ -28,6 +29,26 @@ public class CustomerEntity {
 
   @Column(name = "created_at", nullable = false)
   private Instant createdAt = Instant.now();
+
+  @Version
+  @Column(nullable = false)
+  private long version;
+
+  public long getVersion() {
+    return version;
+  }
+
+  public void setPublicId(String publicId) {
+    this.publicId = publicId;
+  }
+
+  public void setFullName(String fullName) {
+    this.fullName = fullName;
+  }
+
+  public void setStatus(String status) {
+    this.status = status;
+  }
 
   public Long getId() {
     return id;

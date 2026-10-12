@@ -1,4 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -19,6 +21,19 @@ import { Customer } from './customer.model';
         </label>
         <button type="submit" data-testid="customer-search-submit">Search</button>
       </form>
+
+      @if (canManage()) {
+        <form class="search-form" (ngSubmit)="create()" data-testid="customer-create-form">
+          <label>
+            New customer name
+            <input name="fullName" [(ngModel)]="fullName" [disabled]="creating()" maxlength="200" aria-describedby="customer-create-error" data-testid="customer-create-name" />
+          </label>
+          <button type="submit" [disabled]="creating()" data-testid="customer-create-submit">{{ creating() ? 'Creating…' : 'Create customer' }}</button>
+        </form>
+        @if (createError()) {
+          <p id="customer-create-error" role="alert" data-testid="customer-create-error">{{ createError() }}</p>
+        }
+      }
 
       @if (loading()) {
         <p data-testid="customer-search-loading">Searching…</p>
@@ -46,6 +61,12 @@ import { Customer } from './customer.model';
   styleUrl: './customer-search-page.component.scss',
 })
 export class CustomerSearchPageComponent {
+  private readonly session = inject(AuthSessionService);
+  private readonly destroyRef = inject(DestroyRef);
+  readonly canManage = computed(() => this.session.roles().includes('ADMIN'));
+  fullName = '';
+  readonly creating = signal(false);
+  readonly createError = signal<string | null>(null);
   private readonly api = inject(CustomerApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -72,12 +93,39 @@ export class CustomerSearchPageComponent {
     this.search(this.lastQuery());
   }
 
+  create(): void {
+    if (!this.canManage() || this.creating()) {
+      return;
+    }
+    const name = this.fullName.trim();
+    this.createError.set(!name ? 'Name is required.' : name.length > 200 ? 'Name must be at most 200 characters.' : null);
+    if (this.createError()) {
+      return;
+    }
+    this.creating.set(true);
+    this.api.create(name).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (customer) => {
+        this.creating.set(false);
+        this.fullName = '';
+        this.query = customer.publicId;
+        this.submit();
+      },
+      error: (err) => {
+        this.creating.set(false);
+        this.createError.set(err.status === 401 ? 'Sign in again to create a customer.'
+          : err.status === 403 ? 'You do not have permission to create customers.'
+          : err.status === 400 ? 'Customer was not created. Check the name.'
+          : `Customer was not created (${err.status || 'network'}). Try again.`);
+      },
+    });
+  }
+
   private search(query: string): void {
     this.request?.unsubscribe();
     this.lastQuery.set(query);
     this.loading.set(true);
     this.error.set(null);
-    this.request = this.api.search(query).subscribe({
+    this.request = this.api.search(query).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (customers) => {
         this.customers.set(customers);
         this.loading.set(false);

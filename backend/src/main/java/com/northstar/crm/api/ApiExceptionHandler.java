@@ -1,6 +1,7 @@
 package com.northstar.crm.api;
 
 import com.northstar.crm.service.InvalidCustomerIdException;
+import com.northstar.crm.service.CustomerConflictException;
 import com.northstar.crm.service.UnknownCustomerException;
 import com.northstar.crm.service.UnknownInteractionException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,7 +44,13 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(OptimisticLockingFailureException.class)
   public ResponseEntity<ProblemDetail> conflict(HttpServletRequest request) {
-    return problem(HttpStatus.CONFLICT, "Interaction version is stale", request);
+    return problem(HttpStatus.CONFLICT, request.getRequestURI().startsWith("/api/v1/customers/")
+        ? "Customer version is stale" : "Interaction version is stale", request);
+  }
+
+  @ExceptionHandler(CustomerConflictException.class)
+  public ResponseEntity<ProblemDetail> customerConflict(CustomerConflictException ex, HttpServletRequest request) {
+    return problem(HttpStatus.CONFLICT, ex.getMessage(), request);
   }
 
   @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentNotValidException.class,
