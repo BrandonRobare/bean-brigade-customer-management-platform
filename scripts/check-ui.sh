@@ -20,7 +20,7 @@ curl --fail --silent --show-error "$base/" > "$check_dir/index"
 grep -q '<app-root>' "$check_dir/index"
 curl --fail --silent --show-error "$base/interactions" > "$check_dir/deep-link"
 cmp "$check_dir/index" "$check_dir/deep-link"
-for path in /api/v1/interactions /actuator/health /missing.js; do
+for path in /api/v1/interactions /actuator/health /actuator/metrics /actuator/prometheus /missing.js; do
   [ "$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$base$path")" = 404 ]
 done
 curl --silent --show-error -D "$check_dir/headers" -o /dev/null \

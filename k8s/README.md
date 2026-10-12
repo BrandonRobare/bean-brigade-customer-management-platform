@@ -22,13 +22,13 @@ CI publishes the API/UI image pair and `capstone-cd.yml` deploys it; the first l
 flowchart LR
   Browser -->|HTTPS| Ingress
   Ingress -->|/| UI[Angular / nginx]
-  Ingress -->|/api and /actuator| API[Spring Boot]
+  Ingress -->|/api, /livez and /readyz| API[Spring Boot]
   API --> PG[PostgreSQL + PVC]
   API -->|interaction events| Kafka[Combined KRaft broker/controller + PVC]
 ```
 
 The browser calls relative `/api/...`; it never calls its own `localhost:8080` in production. nginx serves the UI
-and SPA deep links. HTTPS requests go directly from Ingress to the API for `/api` and `/actuator`, without path
+and SPA deep links. HTTPS requests go directly from Ingress to the API for `/api`, `/livez` and `/readyz`, without path
 rewrites. The HTTP Ingress routes every path to nginx's 308 redirect, relying on the trusted controller's
 `X-Forwarded-Proto`. This avoids a Traefik Middleware resource the student account cannot create. Confirm the
 controller's `web`/`websecure` entrypoints and header handling before any public demo. API security additionally
@@ -84,6 +84,9 @@ rolled out on `student08` with v0.1.4 on 2026-10-09. This doesn't prove node cap
 replacement is ready; the API keeps at least one of its two pods serving. Simultaneous surges with the topic Job exceed the CPU quota. A later CD job must
 sequence the application changes instead of applying both updated Deployments together. Changed environment
 ConfigMaps/Secrets also require an intentional restart; environment values do not refresh inside existing pods.
+Production Actuator listens on management port 8081; the Ingress never routes it. Kubernetes probes use
+`/livez` and `/readyz` on app port 8080 so they check the server serving application traffic. Prometheus access
+is restricted by the NetworkPolicy and headless metrics Service delivered in #130.
 The API uses [status-only Actuator probes and production JWT rules](../docs/api-runtime.md).
 
 ## Kafka and persistence

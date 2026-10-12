@@ -10,7 +10,13 @@ server:
   forward-headers-strategy: framework
   shutdown: graceful
 management:
+  server:
+    port: 8081
+  endpoint:
+    health:
+      probes:
+        add-additional-paths: true
   endpoints:
     web:
       exposure:
-        include: health,metrics
+        include: health,metrics,prometheus

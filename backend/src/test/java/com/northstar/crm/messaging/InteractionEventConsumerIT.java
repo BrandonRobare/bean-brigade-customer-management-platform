@@ -12,12 +12,17 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.northstar.crm.repo.ProcessedEventRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -32,13 +37,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.MicrometerConsumerListener;
 import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
@@ -53,6 +61,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
     "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
     "spring.kafka.listener.auto-startup=true"
 })
+@AutoConfigureObservability
 @ActiveProfiles("test")
 @EmbeddedKafka(partitions = 1, topics = {
     CustomerInteractionRecordedV1.TOPIC,
@@ -74,6 +83,10 @@ class InteractionEventConsumerIT {
     @Autowired EmbeddedKafkaBroker broker;
     @Autowired KafkaListenerEndpointRegistry listenerRegistry;
     @Autowired ObjectMapper json;
+    @Autowired MeterRegistry meters;
+    @Autowired PrometheusMeterRegistry prometheus;
+    @Autowired ConsumerFactory<?, ?> consumerFactory;
+    private final Map<String, Double> counts = new ConcurrentHashMap<>();
 
     @MockitoSpyBean ProcessedEventRepository processedEvents;
     @MockitoSpyBean InteractionEventConsumer eventConsumer;
@@ -83,6 +96,9 @@ class InteractionEventConsumerIT {
 
     @BeforeEach
     void setUp() {
+        for (String outcome : new String[] {"processed", "failed", "retried", "dead_lettered"}) {
+            counts.put(outcome, count(outcome));
+        }
         for (MessageListenerContainer container : listenerRegistry.getListenerContainers()) {
             ContainerTestUtils.waitForAssignment(container, 1);
         }
@@ -110,6 +126,14 @@ class InteractionEventConsumerIT {
                 assertTrue(processedEvents.existsById(event.eventId())));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertTrue(output.getAll().contains(event.correlationId())));
+        assertCounts(1, 0, 0, 0);
+        assertTrue(consumerFactory.getListeners().stream().anyMatch(MicrometerConsumerListener.class::isInstance));
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertFalse(meters.find("kafka.consumer.fetch.manager.records.lag.max").meters().isEmpty()));
+        await().atMost(Duration.ofSeconds(75)).untilAsserted(() -> {
+            assertTrue(prometheus.scrape().contains("kafka_consumer_fetch_manager_records_lag_max"));
+            assertTrue(prometheus.scrape().contains("kafka_consumer_fetch_manager_records_lag{"));
+        });
     }
 
     @Test
@@ -127,6 +151,7 @@ class InteractionEventConsumerIT {
             assertTrue(output.getAll().contains("Skipping duplicate interaction event eventId=" + event.eventId()));
         });
         assertTrue(KafkaTestUtils.getRecords(dltConsumer, Duration.ofSeconds(1)).isEmpty());
+        assertCounts(2, 0, 0, 0);
     }
 
     @Test
@@ -139,6 +164,7 @@ class InteractionEventConsumerIT {
         assertEquals(event.eventId(), json.readValue(deadLetter.value(), CustomerInteractionRecordedV1.class).eventId());
         verify(eventConsumer, times(1)).receive(argThat(received -> received.eventId().equals(event.eventId())));
         assertFalse(processedEvents.existsById(event.eventId()));
+        assertCounts(0, 1, 0, 1);
     }
 
     @Test
@@ -154,6 +180,20 @@ class InteractionEventConsumerIT {
         verify(eventConsumer, times(3)).receive(argThat(received -> received.eventId().equals(event.eventId())));
         verify(processedEvents, times(3)).insertIfNew(event.eventId());
         assertFalse(processedEvents.existsById(event.eventId()));
+        assertCounts(0, 3, 2, 1);
+    }
+
+    @Test
+    void transientFailureThenSuccessCountsRetryAndProcessed() throws Exception {
+        CustomerInteractionRecordedV1 event = event("1");
+        doThrow(new RuntimeException("synthetic transient failure")).doCallRealMethod()
+                .when(eventConsumer).receive(event);
+
+        send(event);
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertTrue(processedEvents.existsById(event.eventId())));
+        assertCounts(1, 1, 1, 0);
     }
 
     @Test
@@ -174,6 +214,25 @@ class InteractionEventConsumerIT {
         send(valid);
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertTrue(processedEvents.existsById(valid.eventId())));
+        assertCounts(1, 1, 0, 1);
+    }
+
+    private double count(String outcome) {
+        var counter = meters.find("crm.kafka.messages").tags("topic", CustomerInteractionRecordedV1.TOPIC,
+                "outcome", outcome).counter();
+        return counter == null ? 0 : counter.count();
+    }
+
+    private void assertCounts(double processed, double failed, double retried, double deadLettered) {
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            assertEquals(processed, count("processed") - counts.get("processed"));
+            assertEquals(failed, count("failed") - counts.get("failed"));
+            assertEquals(retried, count("retried") - counts.get("retried"));
+            assertEquals(deadLettered, count("dead_lettered") - counts.get("dead_lettered"));
+            meters.find("crm.kafka.messages").meters().forEach(meter ->
+                    assertEquals(Set.of("topic", "outcome"), meter.getId().getTags().stream()
+                            .map(Tag::getKey).collect(Collectors.toSet())));
+        });
     }
 
     private CustomerInteractionRecordedV1 event(String version) {

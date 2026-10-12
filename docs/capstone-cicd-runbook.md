@@ -190,7 +190,7 @@ thing from a laptop: `NAMESPACE=student08 bash scripts/release.sh restore-drill`
 ## Smoke
 
 `scripts/smoke.sh` through the Ingress host, never `localhost`: trusted TLS, readiness, the UI, HTTP→HTTPS, anonymous
-401, wrong password 401, real login, AGENT metrics 403, ADMIN metrics 200, `CUS-1001` and `CUS-1002` reads, a
+401, wrong password 401, real login, `/actuator/*` not routed (404) for AGENT, ADMIN and Prometheus, `CUS-1001` and `CUS-1002` reads, a
 `lab-request-001` write and an unknown-customer 404. It prints every check and exits 1 if any fail.
 
 CD keeps the evidence: the deploy or rollback output (commit and both digests) and the smoke output go into one
@@ -222,7 +222,7 @@ It was issued with an HTTP-01 challenge from inside `student08`, without cluster
    key matches the certificate, then
    `kubectl -n student08 create secret tls crm-tls --cert=... --key=... --dry-run=client -o yaml | kubectl apply -f -`.
    Traefik switches over without a restart. Delete the local copies.
-5. Delete the pod, Service and Ingress, and check `curl https://<PLATFORM_HOSTNAME>/actuator/health/readiness` without
+5. Delete the pod, Service and Ingress, and check `curl https://<PLATFORM_HOSTNAME>/readyz` without
    `-k`.
 
 Renewing needs Let's Encrypt's Subscriber Agreement accepted by the release owner. `sslip.io` isn't on the Public Suffix
