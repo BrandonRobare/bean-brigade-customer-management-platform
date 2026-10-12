@@ -26,6 +26,7 @@ nobody can bypass. `image` only runs once the other six pass, so a red gate anyw
   specs.
 - Maven (`backend`): Java 21, `mvn -B -ntp clean verify` against a `postgres:16` service (db `crm`, the same throwaway
   values as `compose.yaml`). Never `-DskipTests`.
+- Selenium (`ui-e2e`): critical path on every PR, full UI suite on pushes to `main`; not a required check.
 - IaC (`iac`): Trivy config on `k8s/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
   `ansible-lint`. Applying is a separate CD job ([Infrastructure](#infrastructure)).
 
