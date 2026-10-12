@@ -1,0 +1,23 @@
+{
+  "application": "crm-api",
+  "version": "0.0.1-SNAPSHOT",
+  "gitCommit": "08052395a09ea59f99d93a83b6cc97be41500f0c",
+  "runId": "38155665063",
+  "jarSha256": "ce88c9af5353101442d0d7695a68fe98f7fae59ca8194ea0c90b15b113ccab41",
+  "imageRepository": "ghcr.io/brandonrobare/crm-api",
+  "imageDigest": "sha256:9478f1c9759bf4c3ba774d59b6523d2b31e5eef0701040e79c466397247537f4",
+  "builtBy": "capstone-ci",
+  "builtAt": "2026-10-11T16:34:10Z",
+  "runUrl": "https://github.com/BrandonRobare/bean-brigade-customer-management-platform/actions/runs/38155665063",
+  "images": {
+    "api": {
+      "repository": "ghcr.io/brandonrobare/crm-api",
+      "digest": "sha256:9478f1c9759bf4c3ba774d59b6523d2b31e5eef0701040e79c466397247537f4"
+    },
+    "ui": {
+      "repository": "ghcr.io/brandonrobare/crm-ui",
+      "digest": "sha256:5de2425cff4ec9d3d69bf3c95ebc692c466eeeb53e57544ee8deef7dd6f3d24b",
+      "distSha256": "be971ddc69bb77295db70f01f56180f6a6e1a5e85af1b7cd6c412769532812bd"
+    }
+  }
+}
