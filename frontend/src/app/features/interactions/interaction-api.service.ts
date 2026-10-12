@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { CreateInteractionRequest, Interaction } from './interaction.model';
+import { CreateInteractionRequest, Interaction, UpdateInteractionRequest } from './interaction.model';
 
 @Injectable({ providedIn: 'root' })
 export class InteractionApiService {
@@ -18,5 +18,14 @@ export class InteractionApiService {
   create(body: CreateInteractionRequest): Observable<Interaction> {
     // DONE: POST this.base with JSON body
     return this.http.post<Interaction>(this.base, body);
+  }
+
+  update(id: string, body: UpdateInteractionRequest): Observable<Interaction> {
+    return this.http.patch<Interaction>(`${this.base}/${id}`, body);
+  }
+
+  delete(id: string, version: number): Observable<void> {
+    const params = new HttpParams().set('version', version);
+    return this.http.delete<void>(`${this.base}/${id}`, { params });
   }
 }

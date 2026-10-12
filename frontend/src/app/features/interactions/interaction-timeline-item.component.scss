@@ -1,0 +1,11 @@
+@use 'mixins' as *;
+
+p { margin: 0.25rem 0; }
+time, .count { color: var(--color-muted); }
+form { max-width: none; margin-top: var(--space); gap: 0.5rem; }
+textarea { min-height: 6rem; resize: vertical; }
+.count { text-align: right; }
+.error { color: var(--color-error); }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: var(--space); }
+.delete { background: var(--color-error); }
+[role="alert"] { @include alert-with-retry; }

@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { CustomerProfilePageComponent } from './customer-profile-page.component';
 
 describe('CustomerProfilePageComponent', () => {
@@ -39,6 +40,7 @@ describe('CustomerProfilePageComponent', () => {
       fullName: 'Amina Khan',
       status: 'ACTIVE',
       createdAt: '2026-10-06T20:00:00Z',
+      version: 0,
     });
     http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([
       {
@@ -48,6 +50,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'Newest interaction',
         correlationId: 'correlation-2',
         createdAt: '2026-10-08T15:00:00Z',
+        version: 0,
       },
       {
         id: 'INT-1',
@@ -56,6 +59,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'Older interaction',
         correlationId: 'correlation-1',
         createdAt: '2026-10-07T15:00:00Z',
+        version: 0,
       },
     ]);
     fixture.detectChanges();
@@ -136,6 +140,7 @@ describe('CustomerProfilePageComponent', () => {
       fullName: 'Amina Khan',
       status: 'ACTIVE',
       createdAt: '2026-10-06T20:00:00Z',
+      version: 0,
     });
     http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
   });
@@ -163,6 +168,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'Older interaction',
         correlationId: 'correlation-1',
         createdAt: '2026-10-07T15:00:00Z',
+        version: 0,
       },
     ]);
     fixture.detectChanges();
@@ -184,6 +190,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'New interaction',
         correlationId: 'correlation-2',
         createdAt: '2026-10-08T15:00:00Z',
+        version: 0,
       },
       { status: 201, statusText: 'Created' },
     );
@@ -195,6 +202,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'New interaction',
         correlationId: 'correlation-2',
         createdAt: '2026-10-08T15:00:00Z',
+        version: 0,
       },
       {
         id: 'INT-1',
@@ -203,6 +211,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: 'Older interaction',
         correlationId: 'correlation-1',
         createdAt: '2026-10-07T15:00:00Z',
+        version: 0,
       },
     ]);
     fixture.detectChanges();
@@ -225,6 +234,7 @@ describe('CustomerProfilePageComponent', () => {
       fullName: 'Jon Bell',
       status: 'PROSPECT',
       createdAt: '2026-10-07T20:00:00Z',
+      version: 0,
     });
     http.expectOne('/api/v1/interactions?customerId=CUS-1002').flush([]);
   });
@@ -239,6 +249,7 @@ describe('CustomerProfilePageComponent', () => {
         summary: '<img src=x onerror=alert(1)>',
         correlationId: 'correlation-1',
         createdAt: '2026-10-07T15:00:00Z',
+        version: 0,
       },
     ]);
     fixture.detectChanges();
@@ -248,12 +259,202 @@ describe('CustomerProfilePageComponent', () => {
     expect(item.querySelector('img')).toBeNull();
   });
 
+  it('edits as AGENT and refetches the timeline after success', async () => {
+    await loadTimeline('AGENT');
+    element('interaction-edit').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    setValue('interaction-edit-summary', '  Updated summary  ');
+    setValue('interaction-edit-type', 'EMAIL', 'change');
+    element('interaction-edit-form').dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    const request = http.expectOne('/api/v1/interactions/INT-1');
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({ version: 3, interactionType: 'EMAIL', summary: 'Updated summary' });
+    expect((element('interaction-edit-save') as HTMLButtonElement).disabled).toBeTrue();
+    expect(element('interaction-edit-save').textContent).toContain('Saving…');
+    request.flush({ ...interaction, interactionType: 'EMAIL', summary: 'Updated summary', version: 4 });
+    const refresh = http.expectOne('/api/v1/interactions?customerId=CUS-1001');
+    expect(refresh.request.method).toBe('GET');
+    refresh.flush([{ ...interaction, interactionType: 'EMAIL', summary: 'Updated summary', version: 4 }]);
+    fixture.detectChanges();
+    expect(element('interaction-timeline-item').textContent).toContain('Updated summary');
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-edit-form"]')).toBeNull();
+  });
+
+  it('keeps edit values on conflict and reloads only when asked', async () => {
+    await loadTimeline('AGENT');
+    element('interaction-edit').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    setValue('interaction-edit-summary', 'My draft');
+    setValue('interaction-edit-type', 'MEETING', 'change');
+    element('interaction-edit-form').dispatchEvent(new Event('submit'));
+    http.expectOne('/api/v1/interactions/INT-1').flush(null, { status: 409, statusText: 'Conflict' });
+    fixture.detectChanges();
+    expect((element('interaction-edit-summary') as HTMLTextAreaElement).value).toBe('My draft');
+    expect((element('interaction-edit-type') as HTMLSelectElement).value).toBe('MEETING');
+    expect(element('interaction-mutation-error').textContent).toContain('changed');
+    expect(element('interaction-mutation-error').getAttribute('role')).toBe('alert');
+    expect((element('interaction-edit-save') as HTMLButtonElement).disabled).toBeTrue();
+    http.expectNone('/api/v1/interactions/INT-1');
+    http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+    element('interaction-reload').click();
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([{ ...interaction, version: 4 }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-mutation-error"]')).toBeNull();
+    expect((element('interaction-edit') as HTMLButtonElement).disabled).toBeFalse();
+  });
+
+  it('shows delete only for ADMIN and sends no request when confirmation is cancelled', async () => {
+    await loadTimeline('AGENT');
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-delete"]')).toBeNull();
+    setRole('ADMIN');
+    fixture.detectChanges();
+    const confirm = spyOn(window, 'confirm').and.returnValue(false);
+    element('interaction-delete').click();
+    expect(confirm).toHaveBeenCalled();
+    http.expectNone('/api/v1/interactions/INT-1?version=3');
+    expect(element('interaction-timeline-item').textContent).toContain('Original summary');
+  });
+
+  it('deletes the selected interaction with its version and refetches after 204', async () => {
+    await loadTimeline('ADMIN');
+    spyOn(window, 'confirm').and.returnValue(true);
+    element('interaction-delete').click();
+    fixture.detectChanges();
+    const request = http.expectOne('/api/v1/interactions/INT-1?version=3');
+    expect(request.request.method).toBe('DELETE');
+    expect((element('interaction-delete') as HTMLButtonElement).disabled).toBeTrue();
+    expect(element('interaction-delete').textContent).toContain('Deleting…');
+    http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([]);
+    fixture.detectChanges();
+    expect(element('interaction-timeline-empty').textContent).toContain('No interactions yet.');
+  });
+
+  it('cancels editing without a request', async () => {
+    await loadTimeline('ADMIN');
+    element('interaction-edit').click();
+    fixture.detectChanges();
+    element('interaction-edit-cancel').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-edit-form"]')).toBeNull();
+    http.expectNone('/api/v1/interactions/INT-1');
+  });
+
+  for (const summary of ['   ', 'x'.repeat(1025)]) {
+    it(`rejects ${summary.length === 3 ? 'blank' : 'too long'} edit summaries without a request`, async () => {
+      await loadTimeline('AGENT');
+      element('interaction-edit').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      setValue('interaction-edit-summary', summary);
+      element('interaction-edit-form').dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+      expect(element('interaction-edit-summary-error').getAttribute('role')).toBe('alert');
+      http.expectNone('/api/v1/interactions/INT-1');
+    });
+  }
+
+  for (const status of [400, 401, 403, 404, 500]) {
+    it(`shows an edit error for ${status} and keeps the draft`, async () => {
+      await loadTimeline('AGENT');
+      element('interaction-edit').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      setValue('interaction-edit-summary', 'Unsaved draft');
+      element('interaction-edit-form').dispatchEvent(new Event('submit'));
+      http.expectOne('/api/v1/interactions/INT-1').flush(null, { status, statusText: 'Error' });
+      fixture.detectChanges();
+      expect(element('interaction-mutation-error').getAttribute('role')).toBe('alert');
+      expect((element('interaction-edit-summary') as HTMLTextAreaElement).value).toBe('Unsaved draft');
+      expect(element('interaction-mutation-error').textContent).toContain(
+        status === 401 ? 'Sign in' : status === 403 ? 'permission' : status === 404 ? 'no longer exists' : 'not saved',
+      );
+      http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+    });
+  }
+
+  it('shows a delete conflict without retrying or refetching', async () => {
+    await loadTimeline('ADMIN');
+    spyOn(window, 'confirm').and.returnValue(true);
+    element('interaction-delete').click();
+    http.expectOne('/api/v1/interactions/INT-1?version=3').flush(null, { status: 409, statusText: 'Conflict' });
+    fixture.detectChanges();
+    expect(element('interaction-mutation-error').textContent).toContain('changed');
+    expect((element('interaction-delete') as HTMLButtonElement).disabled).toBeTrue();
+    http.expectNone('/api/v1/interactions/INT-1?version=3');
+    http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+  });
+
+  for (const status of [401, 403, 404, 500]) {
+    it(`shows a delete error for ${status} without changing the timeline`, async () => {
+      await loadTimeline('ADMIN');
+      spyOn(window, 'confirm').and.returnValue(true);
+      element('interaction-delete').click();
+      http.expectOne('/api/v1/interactions/INT-1?version=3').flush(null, { status, statusText: 'Error' });
+      fixture.detectChanges();
+      expect(element('interaction-mutation-error').textContent).toContain(
+        status === 401 ? 'Sign in' : status === 403 ? 'permission' : status === 404 ? 'no longer exists' : 'not deleted',
+      );
+      expect(element('interaction-timeline-item').textContent).toContain('Original summary');
+      http.expectNone('/api/v1/interactions?customerId=CUS-1001');
+    });
+  }
+
+  it('cancels a pending edit request when destroyed', async () => {
+    await loadTimeline('AGENT');
+    element('interaction-edit').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    element('interaction-edit-form').dispatchEvent(new Event('submit'));
+    const request = http.expectOne('/api/v1/interactions/INT-1');
+    fixture.destroy();
+    expect(request.cancelled).toBeTrue();
+  });
+
+  it('hides mutation controls without an authorized role', async () => {
+    await loadTimeline('VIEWER');
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-edit"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="interaction-delete"]')).toBeNull();
+  });
+
+  const interaction = {
+    id: 'INT-1', customerId: 'CUS-1001', interactionType: 'NOTE', summary: 'Original summary',
+    correlationId: 'correlation-1', createdAt: '2026-10-07T15:00:00Z', version: 3,
+  };
+
+  function setRole(role: string): void {
+    TestBed.inject(AuthSessionService).accessToken.set(`header.${btoa(JSON.stringify({ roles: [role] }))}.signature`);
+  }
+
+  async function loadTimeline(role: string): Promise<void> {
+    setRole(role);
+    flushCustomer();
+    http.expectOne('/api/v1/interactions?customerId=CUS-1001').flush([interaction]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  function element(id: string): HTMLElement {
+    return fixture.nativeElement.querySelector(`[data-testid="${id}"]`);
+  }
+
+  function setValue(id: string, value: string, event = 'input'): void {
+    (element(id) as HTMLInputElement).value = value;
+    element(id).dispatchEvent(new Event(event));
+  }
+
   function flushCustomer(): void {
     http.expectOne('/api/v1/customers/CUS-1001').flush({
       publicId: 'CUS-1001',
       fullName: 'Amina Khan',
       status: 'ACTIVE',
       createdAt: '2026-10-06T20:00:00Z',
+      version: 0,
     });
   }
 });

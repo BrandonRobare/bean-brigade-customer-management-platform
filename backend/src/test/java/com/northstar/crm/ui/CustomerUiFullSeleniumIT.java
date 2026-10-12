@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.AfterTestExecutionCallback;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -129,6 +130,98 @@ class CustomerUiFullSeleniumIT {
     WebElement firstItem = driver.findElement(testId("interaction-timeline-item"));
     assertEquals("EMAIL", firstItem.findElement(By.tagName("strong")).getText());
     assertEquals(summary, firstItem.findElement(By.tagName("p")).getText());
+  }
+
+  @Test
+  void agentCanEditInteractionAndReloadTimeline() {
+    signIn("agent1", "DEMO_AGENT_PASSWORD");
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    WebElement item = recordInteraction("Selenium edit " + UUID.randomUUID());
+    assertTrue(item.findElements(testId("interaction-delete")).isEmpty());
+    item.findElement(testId("interaction-edit")).click();
+    new Select(wait.until(ExpectedConditions.elementToBeClickable(testId("interaction-edit-type"))))
+        .selectByValue("CALL");
+    WebElement summary = driver.findElement(testId("interaction-edit-summary"));
+    summary.clear();
+    String edited = "Selenium edited " + UUID.randomUUID();
+    summary.sendKeys(edited);
+    driver.findElement(testId("interaction-edit-save")).click();
+    wait.until(ExpectedConditions.invisibilityOfElementLocated(testId("interaction-edit-form")));
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), edited));
+    assertEquals("CALL", driver.findElement(testId("interaction-timeline-item"))
+        .findElement(By.tagName("strong")).getText());
+    SeleniumSupport.navigate(driver, "/customers");
+    wait.until(ExpectedConditions.visibilityOfElementLocated(testId("customer-search-input")));
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), edited));
+  }
+
+  @Test
+  void adminCanDeleteInteractionAndReloadTimeline() {
+    signIn("admin1", "DEMO_ADMIN_PASSWORD");
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    String kept = "Selenium kept " + UUID.randomUUID();
+    recordInteraction(kept);
+    String deleted = "Selenium delete " + UUID.randomUUID();
+    WebElement item = recordInteraction(deleted);
+    item.findElement(testId("interaction-delete")).click();
+    wait.until(ExpectedConditions.alertIsPresent()).accept();
+    wait.until(ExpectedConditions.stalenessOf(item));
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), kept));
+    assertTrue(driver.findElements(testId("interaction-timeline-item")).stream()
+        .noneMatch(row -> row.getText().contains(deleted)));
+    assertEquals("CUS-1001", driver.findElement(testId("customer-profile-id")).getText());
+    SeleniumSupport.navigate(driver, "/customers");
+    wait.until(ExpectedConditions.visibilityOfElementLocated(testId("customer-search-input")));
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), kept));
+    assertTrue(driver.findElements(testId("interaction-timeline-item")).stream()
+        .noneMatch(row -> row.getText().contains(deleted)));
+  }
+
+  @Test
+  void cancellingInteractionDeletionSendsNoRequest() {
+    signIn("admin1", "DEMO_ADMIN_PASSWORD");
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    String summary = "Selenium cancel delete " + UUID.randomUUID();
+    WebElement item = recordInteraction(summary);
+    ((JavascriptExecutor) driver).executeScript("""
+        window.interactionDeleteRequests = 0;
+        const send = XMLHttpRequest.prototype.send;
+        const open = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, ...args) {
+          this.interactionDelete = method.toUpperCase() === 'DELETE' && String(url).includes('/api/v1/interactions/');
+          return open.call(this, method, url, ...args);
+        };
+        XMLHttpRequest.prototype.send = function(...args) {
+          if (this.interactionDelete) window.interactionDeleteRequests++;
+          return send.apply(this, args);
+        };
+        const fetch = window.fetch;
+        window.fetch = function(input, init) {
+          const method = init?.method ?? input?.method ?? 'GET';
+          const url = input?.url ?? String(input);
+          if (method.toUpperCase() === 'DELETE' && url.includes('/api/v1/interactions/')) window.interactionDeleteRequests++;
+          return fetch.call(this, input, init);
+        };
+        """);
+    item.findElement(testId("interaction-delete")).click();
+    wait.until(ExpectedConditions.alertIsPresent()).dismiss();
+    wait.until(ExpectedConditions.elementToBeClickable(testId("interaction-delete")));
+    assertEquals(0L, ((JavascriptExecutor) driver).executeScript("return window.interactionDeleteRequests;"));
+    assertTrue(item.getText().contains(summary));
+    SeleniumSupport.navigate(driver, "/customers");
+    wait.until(ExpectedConditions.visibilityOfElementLocated(testId("customer-search-input")));
+    SeleniumSupport.navigate(driver, "/customers/CUS-1001");
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), summary));
+    assertEquals(0L, ((JavascriptExecutor) driver).executeScript("return window.interactionDeleteRequests;"));
+  }
+
+  private WebElement recordInteraction(String summary) {
+    wait.until(ExpectedConditions.elementToBeClickable(testId("interaction-summary"))).sendKeys(summary);
+    driver.findElement(testId("interaction-submit")).click();
+    wait.until(ExpectedConditions.textToBePresentInElementLocated(testId("interaction-timeline-item"), summary));
+    return driver.findElement(testId("interaction-timeline-item"));
   }
 
   private void signIn(String username, String passwordVariable) {

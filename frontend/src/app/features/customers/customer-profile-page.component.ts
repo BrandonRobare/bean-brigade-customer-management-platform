@@ -1,9 +1,9 @@
-import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { InteractionApiService } from '../interactions/interaction-api.service';
+import { InteractionTimelineItemComponent } from '../interactions/interaction-timeline-item.component';
 import { InteractionFormComponent } from '../interactions/interaction-form.component';
 import { Interaction } from '../interactions/interaction.model';
 import { CustomerApiService } from './customer-api.service';
@@ -12,7 +12,7 @@ import { Customer } from './customer.model';
 @Component({
   selector: 'app-customer-profile-page',
   standalone: true,
-  imports: [DatePipe, RouterLink, InteractionFormComponent],
+  imports: [RouterLink, InteractionFormComponent, InteractionTimelineItemComponent],
   template: `
     <a routerLink="/customers" [queryParams]="{ q: searchQuery }" data-testid="customer-profile-back">Back to search</a>
 
@@ -54,9 +54,10 @@ import { Customer } from './customer.model';
             <ol data-testid="interaction-timeline">
               @for (interaction of interactions(); track interaction.id) {
                 <li class="card" data-testid="interaction-timeline-item">
-                  <strong>{{ interaction.interactionType }}</strong>
-                  <p>{{ interaction.summary }}</p>
-                  <time>{{ interaction.createdAt | date: 'medium' }}</time>
+                  <app-interaction-timeline-item
+                    [interaction]="interaction"
+                    (changed)="loadInteractions()"
+                  />
                 </li>
               }
             </ol>

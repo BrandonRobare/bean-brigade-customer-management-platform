@@ -5,6 +5,7 @@ export interface Interaction {
   summary: string;
   correlationId: string;
   createdAt: string;
+  version: number;
 }
 
 export interface CreateInteractionRequest {
@@ -12,4 +13,10 @@ export interface CreateInteractionRequest {
   interactionType: string;
   summary: string;
   correlationId?: string;
+}
+
+export interface UpdateInteractionRequest {
+  version: number;
+  interactionType?: string;
+  summary?: string;
 }
