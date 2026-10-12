@@ -29,7 +29,12 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String correlationId = request.getHeader(HEADER);
-        if (!isValid(correlationId)) {
+        boolean mutation = ("PATCH".equals(request.getMethod()) || "DELETE".equals(request.getMethod()))
+                && request.getRequestURI().startsWith("/api/v1/interactions/");
+        boolean valid = mutation
+                ? correlationId != null && !correlationId.isBlank() && correlationId.length() <= 64
+                : isValid(correlationId);
+        if (!valid) {
             correlationId = UUID.randomUUID().toString();
         }
         MDC.put(MDC_KEY, correlationId);

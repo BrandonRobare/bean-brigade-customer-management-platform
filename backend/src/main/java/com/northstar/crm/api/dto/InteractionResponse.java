@@ -9,4 +9,5 @@ public record InteractionResponse(
     String interactionType,
     String summary,
     String correlationId,
-    Instant createdAt) {}
+    Instant createdAt,
+    long version) {}
