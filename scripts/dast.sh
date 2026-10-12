@@ -46,7 +46,7 @@ server {
     proxy_pass_header Server;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Proto https;
-    location ~ ^/(api|actuator)(/|\$) {
+    location ~ ^/(api(/|\$)|livez\$|readyz\$) {
         proxy_pass http://$run-api:8080;
     }
     location / {
@@ -60,7 +60,7 @@ docker run -d --name "$run-edge" --network "$run" -p 127.0.0.1::8080 \
 base="http://$(docker port "$run-edge" 8080/tcp | head -1)"
 
 for _ in $(seq 90); do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' "$base/actuator/health/readiness")" = 200 ] && break
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "$base/readyz")" = 200 ] && break
   sleep 2
 done
 
@@ -81,13 +81,13 @@ login() {
 }
 
 {
-  check "readiness" 200 "$(request "$base/actuator/health/readiness")"
+  check "readiness" 200 "$(request "$base/readyz")"
   check "anonymous customer read is 401" 401 "$(request "$base/api/v1/customers/CUS-1001")"
   check "forged bearer token is 401" 401 "$(request -H 'Authorization: Bearer not.a.jwt' "$base/api/v1/customers/CUS-1001")"
-  check "anonymous metrics is 401" 401 "$(request "$base/actuator/metrics")"
-  for endpoint in env beans configprops heapdump loggers mappings; do
+  check "anonymous metrics is not routed" 404 "$(request "$base/actuator/metrics")"
+  for endpoint in prometheus health env beans configprops heapdump loggers mappings; do
     got=$(request "$base/actuator/$endpoint")
-    if [ "$got" = 200 ]; then echo "FAIL actuator/$endpoint is exposed (HTTP 200)"; else echo "PASS actuator/$endpoint is not exposed"; fi
+    check "actuator/$endpoint is not routed" 404 "$got"
   done
   got=$(request -X POST "$base/api/v1/auth/login" -H 'Content-Type: application/json' --data '{"username":')
   if grep -q -E 'Exception|\bat [a-z]+\.[a-z]+\.' "$body"; then
@@ -106,7 +106,7 @@ login() {
   [ "$(login agent1 "$agent_password")" = 200 ] && agent=$(jq -r '.accessToken // empty' "$body")
   if [ -n "$agent" ]; then echo "PASS AGENT login"; else echo "FAIL AGENT login"; fi
   check "AGENT customer read is 200" 200 "$(request -H "Authorization: Bearer $agent" "$base/api/v1/customers/CUS-1001")"
-  check "AGENT metrics is 403" 403 "$(request -H "Authorization: Bearer $agent" "$base/actuator/metrics")"
+  check "AGENT metrics is not routed" 404 "$(request -H "Authorization: Bearer $agent" "$base/actuator/metrics")"
 } | tee "$out/probes.txt"
 failures=$(grep -c '^FAIL' "$out/probes.txt" || true)
 

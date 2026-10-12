@@ -173,8 +173,11 @@ sequenceDiagram
 | `PATCH /api/v1/interactions/{id}` (planned)                         | yes      | yes    |
 | `DELETE /api/v1/interactions/{id}` (planned)                        | no (403) | yes    |
 | Customer create/update/status-change/delete (planned)              | no (403) | yes    |
-| `/actuator/health/liveness`, `/actuator/health/readiness`          | public   | public |
-| `/actuator/metrics`                                                | no (403) | yes    |
+| `/livez`, `/readyz` (prod app port); `/actuator/health/**` (management)          | public   | public |
+| `/actuator/metrics` (prod management port 8081)                                                | no (403) | yes    |
+
+Production Actuator is not routed by Ingress. `GET /actuator/prometheus` is anonymous only on management
+port 8081, protected by the metrics NetworkPolicy (#130).
 
 Tokens are self-issued (**decided**, ADR 0006). `POST /api/v1/auth/login` checks one of two in-memory demo users and
 returns a JWT signed with the API's private RSA key (RS256). Spring Security's resource server checks every other

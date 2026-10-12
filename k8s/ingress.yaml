@@ -18,8 +18,12 @@ spec:
             pathType: Prefix
             backend:
               service: {name: crm-api, port: {name: http}}
-          - path: /actuator
-            pathType: Prefix
+          - path: /livez
+            pathType: Exact
+            backend:
+              service: {name: crm-api, port: {name: http}}
+          - path: /readyz
+            pathType: Exact
             backend:
               service: {name: crm-api, port: {name: http}}
           - path: /

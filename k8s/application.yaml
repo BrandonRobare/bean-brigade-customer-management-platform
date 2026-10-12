@@ -31,7 +31,7 @@ spec:
               sleep: {seconds: 5}
           # The release pipeline must replace this with the verified CI digest.
           image: ghcr.io/brandonrobare/crm-api:release-required
-          ports: [{name: http, containerPort: 8080}]
+          ports: [{name: http, containerPort: 8080}, {name: management, containerPort: 8081}]
           envFrom:
             - configMapRef: {name: crm-api-config}
           env:
@@ -52,16 +52,16 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           startupProbe:
-            httpGet: {path: /actuator/health/liveness, port: http}
+            httpGet: {path: /livez, port: http}
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 36
           readinessProbe:
-            httpGet: {path: /actuator/health/readiness, port: http}
+            httpGet: {path: /readyz, port: http}
             periodSeconds: 5
             timeoutSeconds: 3
           livenessProbe:
-            httpGet: {path: /actuator/health/liveness, port: http}
+            httpGet: {path: /livez, port: http}
             periodSeconds: 10
             timeoutSeconds: 2
           volumeMounts:

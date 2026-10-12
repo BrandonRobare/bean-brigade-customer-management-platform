@@ -1,12 +1,13 @@
 package com.northstar.crm.api;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,34 +16,47 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.northstar.crm.domain.InteractionEntity;
 import com.northstar.crm.repo.CustomerRepository;
 import com.northstar.crm.repo.InteractionRepository;
-import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalManagementPort;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "management.server.port=0")
 @AutoConfigureMockMvc
+@AutoConfigureObservability
 @ActiveProfiles("prod")
 class ProductionSecurityIT {
   private static final KeyPair KEYS = keys();
   @Autowired MockMvc http;
+  @Autowired TestRestTemplate rest;
+  @LocalManagementPort int managementPort;
+  @LocalServerPort int appPort;
   @Autowired ObjectMapper json;
   @Autowired CustomerRepository customers;
   @Autowired InteractionRepository interactions;
@@ -75,11 +89,11 @@ class ProductionSecurityIT {
     String admin = login("admin1", "test-only-admin");
     http.perform(get("/api/v1/interactions").param("customerId", "CUS-1001").secure(true)
             .header("Authorization", "Bearer " + agent)).andExpect(status().isOk());
-    http.perform(get("/actuator/metrics").secure(true)).andExpect(status().isUnauthorized());
-    http.perform(get("/actuator/metrics").secure(true).header("Authorization", "Bearer " + agent))
-        .andExpect(status().isForbidden());
-    http.perform(get("/actuator/metrics").secure(true).header("Authorization", "Bearer " + admin))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.names").isArray());
+    assertEquals(401, management("/actuator/metrics", null).getStatusCode().value());
+    assertEquals(403, management("/actuator/metrics", agent).getStatusCode().value());
+    var metrics = management("/actuator/metrics", admin);
+    assertEquals(200, metrics.getStatusCode().value());
+    assertTrue(json.readTree(metrics.getBody()).get("names").isArray());
     http.perform(post("/api/v1/customers").secure(true).header("Authorization", "Bearer " + agent)
             .contentType(MediaType.APPLICATION_JSON).content("{}"))
         .andExpect(status().isForbidden());
@@ -193,9 +207,38 @@ class ProductionSecurityIT {
     http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
         .andExpect(status().is3xxRedirection())
         .andExpect(header().string("Location", "https://localhost/api/v1/auth/login"));
-    http.perform(get("/actuator/health/readiness"))
+    http.perform(get("/readyz"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"))
         .andExpect(jsonPath("$.components").doesNotExist());
+  }
+
+  @Test
+  void prometheusIsPublicOnlyOnManagementPort() throws Exception {
+    var scrape = management("/actuator/prometheus", null);
+    assertEquals(200, scrape.getStatusCode().value());
+    assertTrue(scrape.getBody().contains("crm_kafka_messages_total"));
+    for (String endpoint : new String[] {"prometheus", "env", "heapdump"}) {
+      assertEquals(401, rest.getForEntity("http://localhost:" + appPort + "/actuator/" + endpoint,
+          String.class).getStatusCode().value());
+    }
+    assertEquals(401, management("/actuator/env", null).getStatusCode().value());
+    assertEquals(401, management("/actuator/heapdump", null).getStatusCode().value());
+    String admin = login("admin1", "test-only-admin");
+    assertEquals(403, management("/actuator/env", admin).getStatusCode().value());
+    assertEquals(403, management("/actuator/heapdump", admin).getStatusCode().value());
+    http.perform(get("/actuator/prometheus").secure(true).header("Authorization", "Bearer " + admin))
+        .andExpect(status().isForbidden());
+    http.perform(get("/actuator/metrics").secure(true).header("Authorization", "Bearer " + admin))
+        .andExpect(status().isNotFound());
+  }
+
+  private ResponseEntity<String> management(String path, String token) {
+    var headers = new HttpHeaders();
+    if (token != null) {
+      headers.setBearerAuth(token);
+    }
+    return rest.exchange("http://localhost:" + managementPort + path,
+        HttpMethod.GET, new HttpEntity<>(headers), String.class);
   }
 
   private String login(String user, String password) throws Exception {

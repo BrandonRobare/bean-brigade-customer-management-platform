@@ -33,7 +33,7 @@ token_for() {
   [ "$(login "$1" "$2")" = 200 ] && jq -r '.accessToken // empty' "$body"
 }
 
-check "readiness over trusted TLS" 200 "$(request "$base/actuator/health/readiness")" '.status == "UP"'
+check "readiness over trusted TLS" 200 "$(request "$base/readyz")" '.status == "UP"'
 check "UI served through the Ingress" 200 "$(request "$base/")"
 grep -q '<app-root' "$body" || { echo "FAIL UI body is not the Angular app"; failures=$((failures + 1)); }
 check "HTTP redirects to HTTPS" 308 "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "http://$host/" 2>/dev/null || true)"
@@ -49,8 +49,9 @@ if [ -z "$agent" ] || [ -z "$admin" ]; then
 fi
 echo "PASS real login for agent1 and admin1"
 
-check "AGENT metrics is 403" 403 "$(request -H "Authorization: Bearer $agent" "$base/actuator/metrics")"
-check "ADMIN metrics is 200" 200 "$(request -H "Authorization: Bearer $admin" "$base/actuator/metrics")" '.names | length > 0'
+check "AGENT cannot reach Actuator through Ingress" 404 "$(request -H "Authorization: Bearer $agent" "$base/actuator/metrics")"
+check "ADMIN cannot reach Actuator through Ingress" 404 "$(request -H "Authorization: Bearer $admin" "$base/actuator/metrics")"
+check "Prometheus is not reachable through Ingress" 404 "$(request "$base/actuator/prometheus")"
 for id in CUS-1001 CUS-1002; do
   check "read $id" 200 "$(request -H "Authorization: Bearer $agent" "$base/api/v1/customers/$id")" ".publicId == \"$id\""
 done

@@ -62,11 +62,20 @@ public class SecurityConfiguration {
     JwtAuthenticationConverter authentication = new JwtAuthenticationConverter();
     authentication.setJwtGrantedAuthoritiesConverter(roles);
     if (environment.matchesProfiles("prod")) {
-      http.requiresChannel(channel -> channel.requestMatchers("/api/**", "/actuator/metrics/**").requiresSecure());
+      http.requiresChannel(channel -> channel
+          .requestMatchers("/api/**").requiresSecure()
+          .requestMatchers(request -> request.getRequestURI().startsWith("/actuator/metrics")
+              && request.getLocalPort() != environment.getProperty("local.management.port", Integer.class, -1))
+          .requiresSecure());
     }
     return http.csrf(csrf -> csrf.disable())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
+            .requestMatchers(request -> request.getMethod().equals("GET")
+                && request.getRequestURI().equals("/actuator/prometheus")
+                && request.getLocalPort() == environment.getProperty("local.management.port", Integer.class, -1))
+            .permitAll()
+            .requestMatchers(HttpMethod.GET, "/livez", "/readyz").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
             .requestMatchers("/actuator/health", "/actuator/health/**", "/error").permitAll()
             .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")

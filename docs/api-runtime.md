@@ -23,8 +23,8 @@ Keep them outside Git and mount the same production key pair in every API pod.
 
 `POST /api/v1/auth/login` accepts `{username,password}`. The synthetic accounts are `agent1` (AGENT) and `admin1`
 (ADMIN); passwords come from Secrets. The response is `{accessToken,tokenType:"Bearer",expiresIn:1800}` and is
-not cacheable. Tokens contain `iss=bean-brigade-crm`, `sub`, `roles`, `iat` and `exp`. Production API and metrics
-requests require HTTPS. Behind Ingress, forwarded headers are trusted only because network access must be restricted
+not cacheable. Tokens contain `iss=bean-brigade-crm`, `sub`, `roles`, `iat` and `exp`. Production API requests require HTTPS; management metrics use ADMIN JWTs on the private management port.
+Behind Ingress, forwarded headers are trusted only because network access must be restricted
 to the trusted proxy; do not expose the ClusterIP or a NodePort directly. Health probes can use internal HTTP.
 Invalid login fields return a sanitized 400 without logging or returning the submitted password; wrong credentials
 return 401.
@@ -33,12 +33,26 @@ return 401.
 | --- | --- | --- |
 | `/actuator/health/liveness` | Public, status only | JVM is alive; database failure must not restart every API pod |
 | `/actuator/health/readiness` | Public, status only | Application accepts traffic and PostgreSQL is reachable |
-| `/actuator/metrics` and children | ADMIN, production only | Runtime diagnostics; AGENT gets 403, anonymous gets 401 over HTTPS |
+| `/actuator/metrics` and children | ADMIN, production only | Runtime diagnostics; AGENT gets 403, anonymous gets 401 on management port 8081 |
 
 The health configuration includes `db` in readiness and only `livenessState` in liveness, following
 [Spring Boot's probe guidance](https://docs.spring.io/spring-boot/3.5/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes).
 JWT verification uses [Spring Security's standard resource server](https://docs.spring.io/spring-security/reference/6.5/servlet/oauth2/resource-server/jwt.html).
-Only health and, in production, metrics are exposed; database and component details stay hidden.
+Only health and, in production, metrics and Prometheus are exposed; database and component details stay hidden.
+
+In production, Actuator moves to port 8081, which the Ingress does not route. `GET /actuator/prometheus`
+is anonymous only on that port, protected by #130's NetworkPolicy. `/actuator/metrics` remains ADMIN-only.
+Dev and test keep Actuator on the application port. Production exposes status-only `/livez` and `/readyz`
+on app port 8080 for Kubernetes probes and Ingress smoke checks.
+
+`crm.kafka.messages` exports as `crm_kafka_messages_total` with only `topic` and `outcome` tags:
+`processed` counts committed handling, including skipped duplicates; `failed` counts every failed delivery;
+`retried` counts retries scheduled by the error handler (including retries that succeed); `dead_lettered` counts confirmed DLT
+publication. A record failing all three attempts produces 3 failed, 2 retried and 1 dead_lettered; an invalid
+version skips retries and produces 1 failed and 1 dead_lettered. Failed DLT publication does not increment
+`dead_lettered`. Boot binds the listener consumer's Kafka client metrics, including
+`kafka_consumer_fetch_manager_records_lag_max` and per-partition `kafka_consumer_fetch_manager_records_lag`.
+HTTP errors use `http_server_requests_seconds_count{status=~"5.."}`.
 
 Verify with Java 21, PostgreSQL 16 from `compose.yaml`, and `./mvnw -B -ntp clean verify` from `backend/`.
 Tests exercise real login/token validation and a closed database pool, including readiness 503 with liveness 200.
