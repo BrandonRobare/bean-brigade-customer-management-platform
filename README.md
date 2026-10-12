@@ -13,7 +13,8 @@ Angular → Spring Boot REST → PostgreSQL, with Kafka events, delivered throug
 | `docs/` | architecture, plans, backlog, runbooks |
 | `defense/` | final presentation packet |
 | `.github/workflows/` | CI and CD |
-| `compose.yaml` | local PostgreSQL and Kafka |
+| `compose.yaml` | local PostgreSQL and Kafka; optional monitoring profile |
+| `monitoring/` | laptop Grafana provisioning and local Prometheus config |
 
 ## Run locally
 
@@ -72,3 +73,6 @@ Sign in as `agent1` (AGENT) or `admin1` (ADMIN) with the passwords from `.env`.
 Seeded customers: `CUS-1001` Amina Khan, `CUS-1002` Ravi Singh.
 
 Synthetic data only; never commit `.env` or credentials.
+
+Kafka operations: [dashboard](docs/kafka-dashboard.md), [DLT replay](docs/dlt-replay-runbook.md),
+and [failure drills](reports/kafka-failure-drills-2026-10-12.md).

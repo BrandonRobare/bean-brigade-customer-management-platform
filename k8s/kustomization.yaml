@@ -6,6 +6,7 @@ resources:
   - application.yaml
   - stateful.yaml
   - kafka-topics.yaml
+  - monitoring.yaml
   - ingress.yaml
 labels:
   - pairs:
