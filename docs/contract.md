@@ -18,7 +18,7 @@ name or the exact public ID, ignoring case; an empty or missing `query` returns 
 [#82](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/82) adds customer
 create/update, status changes, customer deletion without interaction history, and interaction edit/delete to
 the planned slice. Acceptance criteria belong to CAP-12 and CAP-16 in [the backlog](backlog.md).
-Customer additions remain planned. Interaction edit/delete API endpoints are implemented; UI work remains planned.
+Customer additions remain planned. Interaction edit/delete is implemented in the API and the profile timeline.
 Bryan reviews the contract before the API and UI work starts.
 
 | Endpoint | Role | Request | Success |

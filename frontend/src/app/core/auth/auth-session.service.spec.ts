@@ -29,4 +29,23 @@ describe('AuthSessionService', () => {
     http.expectOne('/api/v1/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
     expect(session.accessToken()).toBeNull();
   });
+
+  it('reads roles from the token and clears them on logout', () => {
+    session.accessToken.set(`header.${btoa(JSON.stringify({ roles: ['ADMIN'] }))}.signature`);
+    expect(session.roles()).toEqual(['ADMIN']);
+    session.logout();
+    expect(session.roles()).toEqual([]);
+  });
+
+  it('accepts base64url claims', () => {
+    session.accessToken.set('header.eyJyb2xlcyI6WyJBR0VOVCJdLCJzdWIiOiI_Pz8ifQ.signature');
+    expect(session.roles()).toEqual(['AGENT']);
+  });
+
+  for (const token of ['invalid', 'header.invalid.signature', `header.${btoa(JSON.stringify({ roles: 'ADMIN' }))}.signature`]) {
+    it(`grants no UI roles for malformed token ${token}`, () => {
+      session.accessToken.set(token);
+      expect(session.roles()).toEqual([]);
+    });
+  }
 });

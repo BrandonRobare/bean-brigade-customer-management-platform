@@ -48,6 +48,7 @@ describe('InteractionFormComponent', () => {
       summary: 'Follow up on billing',
       correlationId: 'correlation-3',
       createdAt: '2026-10-09T15:00:00Z',
+      version: 0,
     };
     request.flush(response, { status: 201, statusText: 'Created' });
     fixture.detectChanges();
@@ -136,6 +137,7 @@ describe('InteractionFormComponent', () => {
       summary: 'Pending interaction',
       correlationId: 'correlation-3',
       createdAt: '2026-10-09T15:00:00Z',
+      version: 0,
     });
   });
 });
