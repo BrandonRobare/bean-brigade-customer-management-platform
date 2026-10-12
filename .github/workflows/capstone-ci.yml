@@ -356,7 +356,7 @@ jobs:
 
   # --- image: build API + UI from the verified JAR and dist, Trivy scan and DAST on every run, push the pair to GHCR on main only ---
   image:
-    needs: [frontend, backend, scan, sast, secrets, iac]
+    needs: [frontend, backend, scan, sast, secrets, iac, ui-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read
