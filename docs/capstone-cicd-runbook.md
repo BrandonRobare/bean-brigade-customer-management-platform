@@ -18,15 +18,16 @@ Never paste cluster credentials into this file.
 ## PR gates
 
 `.github/workflows/capstone-ci.yml` runs on every PR and every push to `main`. GitHub's `protect-main` ruleset
-(checked 2026-10-08) requires a PR, squash merges only, and all seven CI jobs to pass: `frontend`, `backend`, `scan`,
-`sast`, `secrets`, `iac` and `image`. Required approvals are 0 for now (plan: 1); stale approvals are dismissed, the branch can't be deleted or force-pushed, and
-nobody can bypass. `image` only runs once the other six pass, so a red gate anywhere blocks the merge.
+(checked 2026-10-11) requires a PR, squash merges only, and all eight CI jobs to pass: `frontend`, `backend`, `ui-e2e`,
+`scan`, `sast`, `secrets`, `iac` and `image`. Required approvals are 0 for now (plan: 1); stale approvals are dismissed, the branch can't be deleted or force-pushed, and
+nobody can bypass. `image` only runs once the other seven jobs pass, `ui-e2e` included, so a red gate anywhere blocks the merge.
 
 - Angular (`frontend`): Node 22, `npm ci`, `npx ng build --configuration=production`. `ng test` joins once there are
   specs.
 - Maven (`backend`): Java 21, `mvn -B -ntp clean verify` against a `postgres:16` service (db `crm`, the same throwaway
   values as `compose.yaml`). Never `-DskipTests`.
-- Selenium (`ui-e2e`): critical path on every PR, full UI suite on pushes to `main`; not a required check.
+- Selenium (`ui-e2e`): critical path on every PR, full UI suite on pushes to `main`. Required by the ruleset since 2026-10-11, and
+  `image` waits for it, so no image is built from a commit that fails it.
 - IaC (`iac`): Trivy config on `k8s/` and `infra/terraform`, `terraform validate`, Ansible syntax check and
   `ansible-lint`. Applying is a separate CD job ([Infrastructure](#infrastructure)).
 
