@@ -132,8 +132,8 @@ sequenceDiagram
     Con ->> DB: record eventId (skip if seen), audit
 ```
 
-- Every hop logs the same correlation ID (`lab-request-001` in the demo), so one search follows the request from the UI
-  to the consumer.
+- Every hop logs the same correlation ID, so one search follows the request from the UI to the consumer. The UI sends
+  a random ID per request; the curl demo uses `lab-request-001`.
 - Failures return Problem Details: 400 validation, 401 no or bad token, 403 wrong role, 404 unknown customer, 409
   invalid state.
 - Publishing **after the commit** is **open** (ADR 0005: after commit, or a transactional outbox).

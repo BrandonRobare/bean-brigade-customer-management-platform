@@ -2,12 +2,12 @@
 
 ## Stack
 
-Angular → REST (JWT) → Spring Boot → PostgreSQL. Not React / Oracle / k3s.
+Angular → REST (JWT) → Spring Boot → PostgreSQL. Not React or Oracle. Runs locally; production is on k3s.
 
 ## Happy path
 
 - Customer: `CUS-1001`
-- Correlation: `lab-request-001`
+- Correlation: the UI sends a random `X-Correlation-Id` per request; `lab-request-001` only comes from the curl call
 - Sign in: `agent1` or `admin1`, passwords from `.env`; the JWT stays in memory only
 
 ## Failure path

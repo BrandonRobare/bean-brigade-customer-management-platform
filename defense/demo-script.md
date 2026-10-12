@@ -18,7 +18,7 @@
 | 0:00 | Hook | Narrator | Business outcome in one sentence | Panel nods |
 | 0:30 | Search | Driver | Search Amina `CUS-1001` | Profile opens |
 | 1:30 | Timeline | Driver | Show existing interactions | List renders |
-| 2:30 | Create | Driver | Record interaction; correlation `lab-request-001` | 201 / UI success |
+| 2:30 | Create | Driver | Record interaction (the UI sends a random correlation ID) | 201 / UI success |
 | 4:00 | Persist | Verifier | SQL or admin proof of row | Row exists |
 | 5:00 | Event | Verifier | Kafka / log shows event + correlation | Message visible |
 | 6:30 | Secondary | Driver | Brief Ravi `CUS-1002` mention | Optional |
