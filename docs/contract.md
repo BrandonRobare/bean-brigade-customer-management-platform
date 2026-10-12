@@ -10,23 +10,23 @@
 | `/api/v1/interactions` | POST | Create a new interaction for a specific customer | customer public_id and interaction request | Created interaction | 201 Created |
 | `/api/v1/auth/login` | POST | Sign-in | `username`, `password` | `accessToken`, `tokenType`, `expiresIn` | 200; wrong credentials 401 |
 
-As of 2026-10-11, interaction GET/POST/PATCH/DELETE and customer search/profile GET are implemented. Search matches part of the
+As of 2026-10-12, interaction GET/POST/PATCH/DELETE and customer GET/POST/PUT/PATCH/DELETE are implemented. Search matches part of the
 name or the exact public ID, ignoring case; an empty or missing `query` returns every customer.
 
 ## CRUD and Lifecycle Scope
 
 [#82](https://github.com/BrandonRobare/bean-brigade-customer-management-platform/issues/82) adds customer
 create/update, status changes, customer deletion without interaction history, and interaction edit/delete to
-the planned slice. Acceptance criteria belong to CAP-12 and CAP-16 in [the backlog](backlog.md).
-Customer additions remain planned. Interaction edit/delete is implemented in the API and the profile timeline.
+the slice. Acceptance criteria belong to CAP-12 and CAP-16 in [the backlog](backlog.md).
+Customer management is implemented in the API, search and profile pages. Interaction edit/delete is implemented in the API and the profile timeline.
 Bryan reviews the contract before the API and UI work starts.
 
 | Endpoint | Role | Request | Success |
 | --- | --- | --- | --- |
-| `POST /api/v1/customers` | ADMIN | `fullName` | 201, `Customer`, `Location: /api/v1/customers/{publicId}` |
-| `PUT /api/v1/customers/{publicId}` | ADMIN | `fullName`, `version` | 200, updated `Customer` |
-| `PATCH /api/v1/customers/{publicId}/status` | ADMIN | `status`, `version` | 200, updated `Customer` |
-| `DELETE /api/v1/customers/{publicId}?version={version}` | ADMIN | Current version in the query | 204, no body |
+| `POST /api/v1/customers` (implemented) | ADMIN | `fullName` | 201, `Customer`, `Location: /api/v1/customers/{publicId}` |
+| `PUT /api/v1/customers/{publicId}` (implemented) | ADMIN | `fullName`, `version` | 200, updated `Customer` |
+| `PATCH /api/v1/customers/{publicId}/status` (implemented) | ADMIN | `status`, `version` | 200, updated `Customer` |
+| `DELETE /api/v1/customers/{publicId}?version={version}` (implemented) | ADMIN | Current version in the query | 204, no body |
 | `PATCH /api/v1/interactions/{id}` (implemented) | AGENT or ADMIN | `version`, plus `interactionType` and/or `summary` | 200, updated interaction |
 | `DELETE /api/v1/interactions/{id}?version={version}` (implemented) | ADMIN | Current version in the query | 204, no body |
 
@@ -57,7 +57,8 @@ Bryan reviews the contract before the API and UI work starts.
 ### Concurrency and Failures
 
 - Interaction responses include `version`, a nonnegative integer backed by Flyway migration V4 and JPA
-  optimistic locking. Customer response versions remain planned.
+  optimistic locking. Customer responses include the same version field, backed by Flyway migration V5
+  and JPA optimistic locking.
   Update, status-change and delete requests must supply the version last read; successful updates increment it.
 - Check the version and perform the mutation atomically in the transaction. A stale version returns 409
   without overwriting or deleting the newer row. Angular preserves edit values, shows the conflict and asks
@@ -80,13 +81,15 @@ an unknown profile ID returns 404. All fields below are required. The internal n
 | `fullName` | string | Customer display name |
 | `status` | string | `PROSPECT`, `ACTIVE` or `CLOSED` |
 | `createdAt` | string (ISO 8601 UTC timestamp) | Customer creation time |
+| `version` | integer | Current nonnegative version, initially 0 |
 
 ```json
 {
   "publicId": "CUS-1001",
   "fullName": "Amina Khan",
   "status": "ACTIVE",
-  "createdAt": "2026-10-06T20:00:00Z"
+  "createdAt": "2026-10-06T20:00:00Z",
+  "version": 0
 }
 ```
 
@@ -125,7 +128,7 @@ The target body is below; `status` matches the HTTP status and `correlationId` i
 | 401 | Missing or invalid bearer token |
 | 403 | Authenticated user lacks the required role |
 | 404 | Customer does not exist, for example `CUS-9999`, or interaction does not exist |
-| 409 | Stale interaction version; planned customer writes also use this for invalid lifecycle transitions, stale versions or deletion blocked by interaction history |
+| 409 | Stale interaction version; customer writes also use this for invalid lifecycle transitions, stale versions or deletion blocked by interaction history |
 
 ```json
 {

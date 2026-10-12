@@ -6,5 +6,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface InteractionRepository extends JpaRepository<InteractionEntity, UUID> {
+  boolean existsByCustomer_PublicId(String publicId);
+
   List<InteractionEntity> findByCustomer_PublicIdOrderByCreatedAtDesc(String publicId);
 }

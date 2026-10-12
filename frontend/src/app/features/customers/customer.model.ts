@@ -3,4 +3,5 @@ export interface Customer {
   fullName: string;
   status: 'PROSPECT' | 'ACTIVE' | 'CLOSED';
   createdAt: string;
+  version: number;
 }

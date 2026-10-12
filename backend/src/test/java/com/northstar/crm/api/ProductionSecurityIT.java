@@ -166,6 +166,29 @@ class ProductionSecurityIT {
   }
 
   @Test
+  void customerWritesRejectExpiredOrInvalidSignaturesWithoutChanges() throws Exception {
+    var before = jdbc.queryForMap("SELECT * FROM customer WHERE public_id = 'CUS-1002'");
+    int count = jdbc.queryForObject("SELECT count(*) FROM customer", Integer.class);
+    for (String token : new String[] {
+        token("bean-brigade-crm", Instant.now().plusSeconds(300), keys()),
+        token("bean-brigade-crm", Instant.now().minusSeconds(120), KEYS)}) {
+      for (var request : java.util.List.of(
+          post("/api/v1/customers").content("{\"fullName\":\"Unauthorized\"}"),
+          org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/customers/CUS-1002")
+              .content("{\"fullName\":\"Unauthorized\",\"version\":0}"),
+          patch("/api/v1/customers/CUS-1002/status").content("{\"status\":\"ACTIVE\",\"version\":0}"),
+          delete("/api/v1/customers/CUS-1002").param("version", "0"))) {
+        http.perform(request.secure(true).header("Authorization", "Bearer " + token)
+                .header("X-Correlation-ID", "customer-security").contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isUnauthorized()).andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.correlationId").value("customer-security"));
+      }
+    }
+    assertEquals(before, jdbc.queryForMap("SELECT * FROM customer WHERE public_id = 'CUS-1002'"));
+    assertEquals(count, jdbc.queryForObject("SELECT count(*) FROM customer", Integer.class));
+  }
+
+  @Test
   void loginRequiresHttpsButHealthRemainsAvailableToPlainHttpProbes() throws Exception {
     http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
         .andExpect(status().is3xxRedirection())

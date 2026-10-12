@@ -9,6 +9,7 @@ public class CustomerMapper {
         customerEntity.getPublicId(),
         customerEntity.getFullName(),
         customerEntity.getStatus(),
-        customerEntity.getCreatedAt().toString());
+        customerEntity.getCreatedAt().toString(),
+        customerEntity.getVersion());
   }
 }

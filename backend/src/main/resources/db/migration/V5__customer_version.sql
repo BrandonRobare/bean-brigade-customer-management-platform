@@ -1,0 +1,3 @@
+ALTER TABLE customer ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
+
+CREATE SEQUENCE customer_public_id_seq START WITH 10001;

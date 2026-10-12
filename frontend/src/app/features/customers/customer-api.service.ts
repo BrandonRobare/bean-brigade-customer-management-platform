@@ -17,4 +17,21 @@ export class CustomerApiService {
   get(publicId: string): Observable<Customer> {
     return this.http.get<Customer>(`${this.base}/${encodeURIComponent(publicId)}`);
   }
+
+  create(fullName: string): Observable<Customer> {
+    return this.http.post<Customer>(this.base, { fullName });
+  }
+
+  update(publicId: string, fullName: string, version: number): Observable<Customer> {
+    return this.http.put<Customer>(`${this.base}/${encodeURIComponent(publicId)}`, { fullName, version });
+  }
+
+  changeStatus(publicId: string, status: Customer['status'], version: number): Observable<Customer> {
+    return this.http.patch<Customer>(`${this.base}/${encodeURIComponent(publicId)}/status`, { status, version });
+  }
+
+  delete(publicId: string, version: number): Observable<void> {
+    const params = new HttpParams().set('version', version);
+    return this.http.delete<void>(`${this.base}/${encodeURIComponent(publicId)}`, { params });
+  }
 }
