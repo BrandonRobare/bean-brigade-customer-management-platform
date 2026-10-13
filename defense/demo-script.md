@@ -1,7 +1,7 @@
 # Demo script: Northstar CRM final defense
 
 The live product demo for the defense: how to set it up, what to say and show, and what to do when it
-breaks. Written for release `v1.1.0`. Runs on the demo laptop's local stack with a wiped database, so the row, the
+breaks. Runs the latest `main` on the demo laptop's local stack with a wiped database, so the row, the
 consumer log and the dashboard can be shown live and Ravi's one-way status change can be repeated. Production shows
 up only in the release beat, through the Actions run and the image digests, never the address bar.
 
@@ -32,8 +32,8 @@ terminals `cd` into `backend` and `frontend` and stay there.
 ### Night before (once)
 
 ```bash
-git fetch --tags
-git switch --detach v1.1.0
+git switch main
+git pull --ff-only
 bash scripts/setup-local.sh
 (cd frontend && npm ci)
 (cd backend && ./mvnw -q -DskipTests package)
