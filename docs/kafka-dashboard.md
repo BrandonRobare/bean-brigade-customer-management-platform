@@ -32,6 +32,7 @@ Grafana is anonymous read-only and bound to `127.0.0.1`. Stop it with
 | Panel | PromQL |
 | --- | --- |
 | Consumer lag | `max by (instance, client_id) (kafka_consumer_fetch_manager_records_lag_max{job="crm-api"})` |
+| Processed in range | `sum by (topic) (increase(crm_kafka_messages_total{job="crm-api",outcome="processed"}[$__range]))` |
 | Dead letters in range | `sum by (topic) (increase(crm_kafka_messages_total{job="crm-api",outcome="dead_lettered"}[$__range]))` |
 | Kafka failures/s | `sum by (topic) (rate(crm_kafka_messages_total{job="crm-api",outcome="failed"}[5m]))` |
 | HTTP 5xx/s | `sum(rate(http_server_requests_seconds_count{job="crm-api",status=~"5.."}[5m])) or vector(0)` |

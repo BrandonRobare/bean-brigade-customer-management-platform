@@ -54,10 +54,10 @@
       ]
     },
     {
-      "id": 2,
+      "id": 5,
       "type": "stat",
-      "title": "Dead letters in selected range",
-      "description": "Successful dead-letter publications, not the current DLT topic depth. Counter resets are handled by increase.",
+      "title": "Processed in range",
+      "description": "Events the consumer finished, including duplicates skipped by eventId. Counter resets are handled by increase.",
       "datasource": {
         "type": "prometheus",
         "uid": "crm-prometheus"
@@ -65,7 +65,49 @@
       "gridPos": {
         "x": 12,
         "y": 0,
-        "w": 12,
+        "w": 6,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (topic) (increase(crm_kafka_messages_total{job=\"crm-api\",outcome=\"processed\"}[$__range]))",
+          "legendFormat": "{{topic}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Dead letters in range",
+      "description": "Successful dead-letter publications, not the current DLT topic depth. Counter resets are handled by increase.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "crm-prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
         "h": 9
       },
       "fieldConfig": {
