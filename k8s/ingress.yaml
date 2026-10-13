@@ -19,11 +19,11 @@ spec:
             backend:
               service: {name: crm-api, port: {name: http}}
           - path: /livez
-            pathType: Exact
+            pathType: Prefix
             backend:
               service: {name: crm-api, port: {name: http}}
           - path: /readyz
-            pathType: Exact
+            pathType: Prefix
             backend:
               service: {name: crm-api, port: {name: http}}
           - path: /
